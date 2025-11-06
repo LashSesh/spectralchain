@@ -1,0 +1,946 @@
+openapi: 3.0.3
+info:
+  title: SpectralChain / Infinity Ledger API
+  version: 2.0.0
+  description: |
+    # SpectralChain API Documentation
+
+    Complete REST API for the SpectralChain / Infinity Ledger system - a proof-carrying vector ledger engine
+    with quantum resonance processing, ghost networking, and zero-knowledge proofs.
+
+    ## Key Features
+    - **Proof-of-Resonance**: Cryptographic proofs for data integrity
+    - **Immutable Ledger**: Hash-chained blockchain with SHA-256
+    - **Vector Search**: High-performance HNSW and IVF-PQ indexing
+    - **Ghost Network**: Addressless, privacy-preserving networking
+    - **Quantum Operators**: Masking, steganography, and ZK proofs
+    - **Ephemeral Services**: Temporary, audit-ready service bubbles
+
+    ## Authentication
+    All endpoints (except health checks) require authentication via Bearer token.
+    Set the `Authorization` header: `Bearer <your_token>`
+
+    ## Rate Limiting
+    - Default: 1000 requests per minute
+    - Burst: 100 requests per second
+
+    ## Versioning
+    API version is included in the response headers: `X-API-Version: 2.0.0`
+    Breaking changes will increment the major version number.
+
+  contact:
+    name: SpectralChain Support
+    url: https://github.com/LashSesh/spectralchain
+    email: support@spectralchain.io
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.spectralchain.io/v2
+    description: Production server (example)
+
+tags:
+  - name: Health
+    description: Health check and system status endpoints
+  - name: Ingestion
+    description: Data ingestion into MEF-Core system
+  - name: Processing
+    description: Solve-Coagula quantum processing
+  - name: Ledger
+    description: Hash-chained immutable ledger operations
+  - name: Vector Database
+    description: Vector search and indexing
+  - name: TIC
+    description: Temporal Information Crystals
+  - name: Coupling
+    description: Spiral coupling engine
+  - name: Domain
+    description: Domain-specific processing (Resonit, Resonat, etc.)
+  - name: Metatron
+    description: Metatron routing and topology
+  - name: Merkaba Gate
+    description: Gate evaluation and audit
+  - name: System
+    description: System metrics and status
+  - name: Zero-Knowledge
+    description: Zero-knowledge proof operations
+  - name: Ghost Network
+    description: Addressless networking (future)
+  - name: Quantum Operators
+    description: Masking, steganography, resonance (future)
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ============================================================================
+  # HEALTH & STATUS
+  # ============================================================================
+  /ping:
+    get:
+      summary: Basic health check
+      description: Returns system status, version, and seed information
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                    example: 2.0.0
+                  seed:
+                    type: string
+                    example: MEF_SEED_42
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /healthz:
+    get:
+      summary: Liveness probe
+      description: Kubernetes-style liveness check
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /readyz:
+    get:
+      summary: Readiness probe
+      description: Kubernetes-style readiness check with component status
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  components:
+                    type: object
+                    properties:
+                      storage:
+                        type: string
+                        example: ok
+                      ledger:
+                        type: string
+                        example: ok
+                      vector_db:
+                        type: string
+                        example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  # ============================================================================
+  # DATA INGESTION
+  # ============================================================================
+  /ingest:
+    post:
+      summary: Ingest data into MEF-Core
+      description: |
+        Ingest data into the MEF-Core system, creating a deterministic spiral snapshot.
+        Returns a snapshot ID with Proof-of-Resonance.
+      tags: [Ingestion]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+            examples:
+              text:
+                summary: Text ingestion
+                value:
+                  data: "Hello, SpectralChain!"
+                  data_type: "text"
+                  seed: "my-deterministic-seed"
+              json:
+                summary: JSON ingestion
+                value:
+                  data: {"key": "value", "nested": {"array": [1, 2, 3]}}
+                  data_type: "json"
+                  seed: "json-seed-123"
+      responses:
+        '200':
+          description: Data ingested successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /acquisition:
+    post:
+      summary: Alternative data ingestion endpoint
+      description: Alias for /ingest with extended acquisition options
+      tags: [Ingestion]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+      responses:
+        '200':
+          description: Data acquired successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+
+  # ============================================================================
+  # PROCESSING
+  # ============================================================================
+  /process:
+    post:
+      summary: Process snapshot through Solve-Coagula
+      description: |
+        Process a spiral snapshot through the Solve-Coagula quantum engine to create a
+        Temporal Information Crystal (TIC). Optionally auto-commit to ledger.
+      tags: [Processing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessRequest'
+            example:
+              snapshot_id: "snap_1a2b3c4d5e6f"
+              commit: true
+      responses:
+        '200':
+          description: Processing completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessResponse'
+        '404':
+          description: Snapshot not found
+
+  /solve:
+    post:
+      summary: Direct Solve-Coagula processing
+      description: Lower-level access to Solve-Coagula fixpoint calculation
+      tags: [Processing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [snapshot_id]
+              properties:
+                snapshot_id:
+                  type: string
+                  example: snap_1a2b3c4d5e6f
+      responses:
+        '200':
+          description: Solve completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tic_id:
+                    type: string
+                  status:
+                    type: string
+                  steps:
+                    type: integer
+
+  /validate/snapshot/{snapshot_id}:
+    post:
+      summary: Validate snapshot using Proof-of-Resonance
+      description: Verify the integrity and resonance of a spiral snapshot
+      tags: [Processing]
+      parameters:
+        - $ref: '#/components/parameters/SnapshotId'
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  resonance_score:
+                    type: number
+                    format: float
+                  proof:
+                    type: object
+
+  # ============================================================================
+  # LEDGER OPERATIONS
+  # ============================================================================
+  /ledger:
+    post:
+      summary: Append block to ledger
+      description: Append a new block containing a TIC to the immutable ledger
+      tags: [Ledger]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LedgerAppendRequest'
+      responses:
+        '200':
+          description: Block appended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerAppendResponse'
+
+  /ledger/{index}:
+    get:
+      summary: Get block by index
+      description: Retrieve a specific block from the ledger
+      tags: [Ledger]
+      parameters:
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+          description: Block index (0-based)
+      responses:
+        '200':
+          description: Block retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Block'
+        '404':
+          description: Block not found
+
+  /audit:
+    get:
+      summary: Audit ledger integrity
+      description: Verify hash chain integrity across the entire ledger
+      tags: [Ledger]
+      parameters:
+        - name: start
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Start block index
+        - name: export
+          in: query
+          schema:
+            type: boolean
+          description: Export full audit trail
+      responses:
+        '200':
+          description: Audit completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  total_blocks:
+                    type: integer
+                  checked_blocks:
+                    type: integer
+                  first_invalid_block:
+                    type: integer
+                    nullable: true
+                  audit_trail:
+                    type: array
+                    items:
+                      type: object
+
+  # ============================================================================
+  # VECTOR DATABASE
+  # ============================================================================
+  /search:
+    post:
+      summary: Search vectors in collection
+      description: Perform approximate nearest neighbor search
+      tags: [Vector Database]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+  /collections:
+    get:
+      summary: List vector collections
+      description: Get all available vector collections
+      tags: [Vector Database]
+      responses:
+        '200':
+          description: Collections list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections:
+                    type: array
+                    items:
+                      type: string
+
+  /collections/{name}/upsert:
+    post:
+      summary: Upsert vectors to collection
+      description: Insert or update vectors in a collection
+      tags: [Vector Database]
+      parameters:
+        - $ref: '#/components/parameters/CollectionName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vectors]
+              properties:
+                vectors:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, vector]
+                    properties:
+                      id:
+                        type: string
+                      vector:
+                        type: array
+                        items:
+                          type: number
+                      metadata:
+                        type: object
+      responses:
+        '200':
+          description: Vectors upserted
+
+  # ============================================================================
+  # TIC (TEMPORAL INFORMATION CRYSTALS)
+  # ============================================================================
+  /tic/{id}:
+    get:
+      summary: Get TIC by ID
+      description: Retrieve a Temporal Information Crystal
+      tags: [TIC]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: TIC retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TIC'
+
+  # ============================================================================
+  # DOMAIN PROCESSING
+  # ============================================================================
+  /domain/process:
+    post:
+      summary: Process domain data through MEF pipeline
+      description: Complete MEF domain processing workflow
+      tags: [Domain]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data]
+              properties:
+                data:
+                  type: object
+                domain_type:
+                  type: string
+                  enum: [resonit, resonat, mesh, infogenome]
+      responses:
+        '200':
+          description: Processing completed
+
+  /domain/resonit/create:
+    post:
+      summary: Create Resonit
+      description: Create a Resonit from input data
+      tags: [Domain]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Resonit created
+
+  # ============================================================================
+  # METATRON ROUTING
+  # ============================================================================
+  /metatron/route/select:
+    post:
+      summary: Select optimal route
+      description: Use Metatron topology to select optimal processing route
+      tags: [Metatron]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, destination]
+              properties:
+                source:
+                  type: string
+                destination:
+                  type: string
+                constraints:
+                  type: object
+      responses:
+        '200':
+          description: Route selected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  route_id:
+                    type: string
+                  path:
+                    type: array
+                    items:
+                      type: string
+                  cost:
+                    type: number
+
+  # ============================================================================
+  # MERKABA GATE
+  # ============================================================================
+  /gate/merkaba:
+    post:
+      summary: Evaluate Merkaba gate
+      description: Gate evaluation returns FIRE or HOLD decision
+      tags: [Merkaba Gate]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                input:
+                  type: object
+      responses:
+        '200':
+          description: Gate evaluation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision:
+                    type: string
+                    enum: [FIRE, HOLD]
+                  confidence:
+                    type: number
+                  audit_id:
+                    type: string
+
+  # ============================================================================
+  # SYSTEM METRICS
+  # ============================================================================
+  /metrics:
+    get:
+      summary: Get Prometheus metrics
+      description: Prometheus-compatible metrics endpoint
+      tags: [System]
+      security: []
+      responses:
+        '200':
+          description: Metrics in Prometheus format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /stats:
+    get:
+      summary: Get system statistics
+      description: Human-readable system statistics
+      tags: [System]
+      responses:
+        '200':
+          description: System statistics
+          content:
+            application/json:
+              schema:
+                type: object
+
+  # ============================================================================
+  # ZERO-KNOWLEDGE PROOFS
+  # ============================================================================
+  /zk/infer:
+    post:
+      summary: Zero-knowledge inference
+      description: Perform computation with zero-knowledge proof
+      tags: [Zero-Knowledge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZkInferRequest'
+      responses:
+        '200':
+          description: Inference completed with proof
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZkInferResponse'
+
+# ==============================================================================
+# COMPONENTS
+# ==============================================================================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Provide your API token via Bearer authentication.
+        Example: `Authorization: Bearer mef_token_abc123`
+
+  parameters:
+    SnapshotId:
+      name: snapshot_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^snap_[a-f0-9]{12}$'
+      description: Unique snapshot identifier
+      example: snap_1a2b3c4d5e6f
+
+    CollectionName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-zA-Z0-9_-]+$'
+      description: Collection name
+      example: my_vectors
+
+  schemas:
+    # ========================================================================
+    # REQUEST SCHEMAS
+    # ========================================================================
+    IngestRequest:
+      type: object
+      required: [data, data_type]
+      properties:
+        data:
+          oneOf:
+            - type: string
+            - type: object
+            - type: array
+          description: Data to ingest (string, JSON, or binary)
+        data_type:
+          type: string
+          enum: [text, json, numeric, binary, raw]
+          description: Type of data being ingested
+        seed:
+          type: string
+          description: Deterministic seed for reproducible snapshots
+          example: my-seed-123
+
+    ProcessRequest:
+      type: object
+      required: [snapshot_id]
+      properties:
+        snapshot_id:
+          type: string
+          description: Snapshot ID to process
+          example: snap_1a2b3c4d5e6f
+        commit:
+          type: boolean
+          default: false
+          description: Auto-commit TIC to ledger
+
+    LedgerAppendRequest:
+      type: object
+      required: [tic_id, snapshot_id]
+      properties:
+        tic_id:
+          type: string
+        snapshot_id:
+          type: string
+
+    SearchRequest:
+      type: object
+      required: [collection, query_vector]
+      properties:
+        collection:
+          type: string
+          description: Collection name to search
+        query_vector:
+          type: array
+          items:
+            type: number
+          description: Query vector
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 10
+          description: Number of results to return
+        filter:
+          type: object
+          description: Optional metadata filter
+
+    ZkInferRequest:
+      type: object
+      required: [input]
+      properties:
+        input:
+          type: object
+          description: Input data for inference
+
+    # ========================================================================
+    # RESPONSE SCHEMAS
+    # ========================================================================
+    IngestResponse:
+      type: object
+      properties:
+        snapshot_id:
+          type: string
+          description: Unique snapshot identifier
+          example: snap_1a2b3c4d5e6f
+        phase:
+          type: string
+          description: Processing phase
+        por:
+          type: object
+          description: Proof-of-Resonance
+          properties:
+            hash:
+              type: string
+            signature:
+              type: string
+        hash:
+          type: string
+          description: Snapshot hash
+        timestamp:
+          type: string
+          format: date-time
+
+    ProcessResponse:
+      type: object
+      properties:
+        tic_id:
+          type: string
+          description: Temporal Information Crystal ID
+        converged:
+          type: boolean
+          description: Whether fixpoint convergence was achieved
+        iterations:
+          type: integer
+          description: Number of iterations required
+        final_eigenvalue:
+          type: number
+          format: float
+          description: Final eigenvalue after convergence
+        committed:
+          type: boolean
+          description: Whether TIC was committed to ledger
+
+    LedgerAppendResponse:
+      type: object
+      properties:
+        block_index:
+          type: integer
+          description: Index of appended block
+        block_hash:
+          type: string
+          description: SHA-256 hash of block
+        timestamp:
+          type: string
+          format: date-time
+        previous_hash:
+          type: string
+          description: Hash of previous block
+
+    SearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              score:
+                type: number
+                format: float
+              metadata:
+                type: object
+        took:
+          type: integer
+          description: Query time in milliseconds
+
+    ZkInferResponse:
+      type: object
+      properties:
+        result:
+          type: object
+          description: Inference result
+        proof:
+          type: string
+          description: Zero-knowledge proof
+        timestamp:
+          type: string
+          format: date-time
+
+    Block:
+      type: object
+      properties:
+        index:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        hash:
+          type: string
+        previous_hash:
+          type: string
+        tic_id:
+          type: string
+        snapshot_id:
+          type: string
+
+    TIC:
+      type: object
+      properties:
+        id:
+          type: string
+        snapshot_id:
+          type: string
+        eigenvalue:
+          type: number
+        iterations:
+          type: integer
+        converged:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: INVALID_SNAPSHOT
+        message:
+          type: string
+          description: Human-readable error message
+          example: Snapshot not found
+        details:
+          type: object
+          description: Additional error context
+        request_id:
+          type: string
+          description: Request ID for debugging
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: BAD_REQUEST
+            message: Invalid data_type parameter
+
+    Unauthorized:
+      description: Unauthorized - invalid or missing token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: UNAUTHORIZED
+            message: Missing or invalid authorization token
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

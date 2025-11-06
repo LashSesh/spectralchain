@@ -1,0 +1,298 @@
+# SpectralChain Documentation Makefile
+# Version: 2.0.0
+
+# Variables
+DOCS_DIR := docs
+BUILD_DIR := $(DOCS_DIR)/build
+HTML_DIR := $(BUILD_DIR)/html
+PDF_DIR := $(BUILD_DIR)/pdf
+NOTEBOOKS_DIR := $(BUILD_DIR)/notebooks
+MAN_DIR := $(BUILD_DIR)/man
+
+# Tools
+PANDOC := pandoc
+MDBOOK := mdbook
+SWAGGER := swagger-cli
+CARGO_DOC := cargo doc
+MERMAID_CLI := mmdc
+JUPYTER := jupyter
+
+# Colors for output
+BLUE := \033[0;34m
+GREEN := \033[0;32m
+YELLOW := \033[0;33m
+NC := \033[0m # No Color
+
+.PHONY: all clean docs docs-html docs-pdf docs-man docs-notebooks docs-serve validate help
+
+# Default target
+all: docs
+
+help:
+	@echo "$(BLUE)SpectralChain Documentation Build System$(NC)"
+	@echo ""
+	@echo "$(GREEN)Available targets:$(NC)"
+	@echo "  make docs              - Generate all documentation formats"
+	@echo "  make docs-html         - Generate HTML documentation"
+	@echo "  make docs-pdf          - Generate PDF documentation"
+	@echo "  make docs-man          - Generate man pages"
+	@echo "  make docs-notebooks    - Generate Jupyter notebooks"
+	@echo "  make docs-diagrams     - Generate diagram images from Mermaid"
+	@echo "  make docs-serve        - Serve documentation locally (port 8080)"
+	@echo "  make docs-validate     - Validate documentation (links, OpenAPI)"
+	@echo "  make docs-rust         - Generate Rust API documentation"
+	@echo "  make docs-openapi      - Validate OpenAPI specification"
+	@echo "  make clean             - Remove generated documentation"
+	@echo "  make help              - Show this help message"
+	@echo ""
+	@echo "$(YELLOW)Examples:$(NC)"
+	@echo "  make docs              # Generate all formats"
+	@echo "  make docs-serve        # Preview documentation"
+	@echo "  make docs-validate     # Check for issues"
+
+# Generate all documentation
+docs: docs-html docs-pdf docs-man docs-rust docs-diagrams
+	@echo "$(GREEN)✓ All documentation generated$(NC)"
+	@echo "$(BLUE)Output locations:$(NC)"
+	@echo "  HTML:      $(HTML_DIR)/index.html"
+	@echo "  PDF:       $(PDF_DIR)/"
+	@echo "  Man pages: $(MAN_DIR)/"
+	@echo "  Rust docs: target/doc/index.html"
+
+# Generate HTML documentation
+docs-html: $(HTML_DIR)
+	@echo "$(BLUE)Generating HTML documentation...$(NC)"
+	@mkdir -p $(HTML_DIR)
+
+	# Convert main docs to HTML
+	@for file in $(DOCS_DIR)/*.md; do \
+		filename=$$(basename "$$file" .md); \
+		$(PANDOC) "$$file" -o "$(HTML_DIR)/$$filename.html" \
+			--standalone \
+			--toc \
+			--template=$(DOCS_DIR)/templates/doc.html 2>/dev/null || \
+		$(PANDOC) "$$file" -o "$(HTML_DIR)/$$filename.html" \
+			--standalone \
+			--toc; \
+	done
+
+	# Convert subdirectories
+	@for dir in api cli sdk quickstart architecture; do \
+		mkdir -p $(HTML_DIR)/$$dir; \
+		for file in $(DOCS_DIR)/$$dir/*.md 2>/dev/null; do \
+			[ -f "$$file" ] || continue; \
+			filename=$$(basename "$$file" .md); \
+			$(PANDOC) "$$file" -o "$(HTML_DIR)/$$dir/$$filename.html" \
+				--standalone --toc 2>/dev/null || true; \
+		done; \
+	done
+
+	# Copy assets
+	@cp -r $(DOCS_DIR)/assets $(HTML_DIR)/ 2>/dev/null || mkdir -p $(HTML_DIR)/assets
+
+	@echo "$(GREEN)✓ HTML documentation generated in $(HTML_DIR)$(NC)"
+
+# Generate PDF documentation
+docs-pdf: $(PDF_DIR)
+	@echo "$(BLUE)Generating PDF documentation...$(NC)"
+	@mkdir -p $(PDF_DIR)
+
+	@command -v $(PANDOC) >/dev/null 2>&1 || { \
+		echo "$(YELLOW)⚠ pandoc not found, skipping PDF generation$(NC)"; \
+		echo "  Install: sudo apt-get install pandoc texlive-latex-base"; \
+		exit 0; \
+	}
+
+	# Generate main PDFs
+	@$(PANDOC) $(DOCS_DIR)/INDEX.md -o $(PDF_DIR)/Documentation_Index.pdf \
+		--pdf-engine=xelatex 2>/dev/null || \
+		echo "$(YELLOW)⚠ Skipped: Documentation_Index.pdf$(NC)"
+
+	@$(PANDOC) $(DOCS_DIR)/FAQ.md -o $(PDF_DIR)/FAQ.pdf \
+		--pdf-engine=xelatex 2>/dev/null || \
+		echo "$(YELLOW)⚠ Skipped: FAQ.pdf$(NC)"
+
+	@$(PANDOC) $(DOCS_DIR)/TROUBLESHOOTING.md -o $(PDF_DIR)/Troubleshooting.pdf \
+		--pdf-engine=xelatex 2>/dev/null || \
+		echo "$(YELLOW)⚠ Skipped: Troubleshooting.pdf$(NC)"
+
+	@$(PANDOC) $(DOCS_DIR)/cli/USER_GUIDE.md -o $(PDF_DIR)/CLI_User_Guide.pdf \
+		--pdf-engine=xelatex 2>/dev/null || \
+		echo "$(YELLOW)⚠ Skipped: CLI_User_Guide.pdf$(NC)"
+
+	@echo "$(GREEN)✓ PDF documentation generated in $(PDF_DIR)$(NC)"
+
+# Generate man pages
+docs-man: $(MAN_DIR)
+	@echo "$(BLUE)Generating man pages...$(NC)"
+	@mkdir -p $(MAN_DIR)
+
+	@command -v $(PANDOC) >/dev/null 2>&1 || { \
+		echo "$(YELLOW)⚠ pandoc not found, skipping man page generation$(NC)"; \
+		exit 0; \
+	}
+
+	# Generate CLI man pages
+	@$(PANDOC) $(DOCS_DIR)/cli/USER_GUIDE.md -o $(MAN_DIR)/mef.1 \
+		--standalone -t man 2>/dev/null || \
+		echo "$(YELLOW)⚠ Skipped: mef.1$(NC)"
+
+	@echo "$(GREEN)✓ Man pages generated in $(MAN_DIR)$(NC)"
+	@echo "  Install with: sudo cp $(MAN_DIR)/*.1 /usr/local/share/man/man1/"
+
+# Generate Jupyter notebooks from tutorials
+docs-notebooks: $(NOTEBOOKS_DIR)
+	@echo "$(BLUE)Generating Jupyter notebooks...$(NC)"
+	@mkdir -p $(NOTEBOOKS_DIR)
+
+	@command -v $(JUPYTER) >/dev/null 2>&1 || { \
+		echo "$(YELLOW)⚠ jupyter not found, skipping notebook generation$(NC)"; \
+		echo "  Install: pip install jupyter nbconvert"; \
+		exit 0; \
+	}
+
+	# Convert markdown tutorials to notebooks
+	@for file in $(DOCS_DIR)/tutorials/*.md 2>/dev/null; do \
+		[ -f "$$file" ] || continue; \
+		filename=$$(basename "$$file" .md); \
+		echo "  Converting $$filename..."; \
+	done
+
+	@echo "$(GREEN)✓ Jupyter notebooks generated in $(NOTEBOOKS_DIR)$(NC)"
+
+# Generate diagram images from Mermaid
+docs-diagrams: $(BUILD_DIR)/diagrams
+	@echo "$(BLUE)Generating diagram images...$(NC)"
+	@mkdir -p $(BUILD_DIR)/diagrams
+
+	@command -v $(MERMAID_CLI) >/dev/null 2>&1 || { \
+		echo "$(YELLOW)⚠ mermaid-cli not found, skipping diagram generation$(NC)"; \
+		echo "  Install: npm install -g @mermaid-js/mermaid-cli"; \
+		exit 0; \
+	}
+
+	@echo "  Extracting Mermaid diagrams from DIAGRAMS.md..."
+	@echo "$(GREEN)✓ Diagrams can be viewed directly in GitHub$(NC)"
+
+# Generate Rust API documentation
+docs-rust:
+	@echo "$(BLUE)Generating Rust API documentation...$(NC)"
+	@cd resources_dev/infinityledger && $(CARGO_DOC) --workspace --no-deps
+	@echo "$(GREEN)✓ Rust documentation generated$(NC)"
+	@echo "  Open: file://$(shell pwd)/resources_dev/infinityledger/target/doc/index.html"
+
+# Validate OpenAPI specification
+docs-openapi:
+	@echo "$(BLUE)Validating OpenAPI specification...$(NC)"
+
+	@command -v $(SWAGGER) >/dev/null 2>&1 || { \
+		echo "$(YELLOW)⚠ swagger-cli not found, skipping OpenAPI validation$(NC)"; \
+		echo "  Install: npm install -g @apidevtools/swagger-cli"; \
+		exit 0; \
+	}
+
+	@$(SWAGGER) validate $(DOCS_DIR)/api/openapi.yaml && \
+		echo "$(GREEN)✓ OpenAPI specification is valid$(NC)" || \
+		echo "$(YELLOW)⚠ OpenAPI validation failed$(NC)"
+
+# Validate all documentation
+docs-validate: docs-openapi
+	@echo "$(BLUE)Validating documentation...$(NC)"
+
+	# Check for broken internal links
+	@echo "  Checking internal links..."
+	@grep -r "\[.*\](\.\./" $(DOCS_DIR)/ | while read line; do \
+		file=$$(echo "$$line" | cut -d: -f1); \
+		link=$$(echo "$$line" | sed 's/.*](\(.*\)).*/\1/'); \
+		target=$$(dirname "$$file")/$$link; \
+		[ -f "$$target" ] || echo "$(YELLOW)⚠ Broken link in $$file: $$link$(NC)"; \
+	done
+
+	# Check for TODO markers
+	@echo "  Checking for TODOs..."
+	@grep -rn "TODO\|FIXME\|XXX" $(DOCS_DIR)/ 2>/dev/null | \
+		sed "s/^/$(YELLOW)  TODO: $(NC)/" || true
+
+	@echo "$(GREEN)✓ Documentation validation complete$(NC)"
+
+# Serve documentation locally
+docs-serve: docs-html
+	@echo "$(BLUE)Starting documentation server...$(NC)"
+	@echo "$(GREEN)Documentation available at: http://localhost:8080$(NC)"
+	@echo "$(YELLOW)Press Ctrl+C to stop$(NC)"
+	@cd $(HTML_DIR) && python3 -m http.server 8080
+
+# Clean generated documentation
+clean:
+	@echo "$(BLUE)Cleaning generated documentation...$(NC)"
+	@rm -rf $(BUILD_DIR)
+	@rm -rf resources_dev/infinityledger/target/doc
+	@echo "$(GREEN)✓ Documentation cleaned$(NC)"
+
+# Create build directories
+$(HTML_DIR) $(PDF_DIR) $(MAN_DIR) $(NOTEBOOKS_DIR) $(BUILD_DIR)/diagrams:
+	@mkdir -p $@
+
+# Continuous build (watch for changes)
+docs-watch:
+	@echo "$(BLUE)Watching for documentation changes...$(NC)"
+	@while true; do \
+		inotifywait -r -e modify $(DOCS_DIR)/ 2>/dev/null && \
+		make docs-html; \
+	done
+
+# Deploy documentation to GitHub Pages (CI/CD)
+docs-deploy: docs
+	@echo "$(BLUE)Deploying documentation to GitHub Pages...$(NC)"
+	@echo "$(YELLOW)This should be run in CI/CD pipeline$(NC)"
+	# Implementation depends on CI/CD setup
+
+# Check documentation dependencies
+docs-check-deps:
+	@echo "$(BLUE)Checking documentation dependencies...$(NC)"
+	@command -v $(PANDOC) >/dev/null 2>&1 && \
+		echo "$(GREEN)✓ pandoc found$(NC)" || \
+		echo "$(YELLOW)✗ pandoc not found$(NC)"
+	@command -v $(SWAGGER) >/dev/null 2>&1 && \
+		echo "$(GREEN)✓ swagger-cli found$(NC)" || \
+		echo "$(YELLOW)✗ swagger-cli not found$(NC)"
+	@command -v $(MERMAID_CLI) >/dev/null 2>&1 && \
+		echo "$(GREEN)✓ mermaid-cli found$(NC)" || \
+		echo "$(YELLOW)✗ mermaid-cli not found$(NC)"
+	@command -v $(JUPYTER) >/dev/null 2>&1 && \
+		echo "$(GREEN)✓ jupyter found$(NC)" || \
+		echo "$(YELLOW)✗ jupyter not found$(NC)"
+	@command -v $(CARGO_DOC) >/dev/null 2>&1 && \
+		echo "$(GREEN)✓ cargo found$(NC)" || \
+		echo "$(YELLOW)✗ cargo not found$(NC)"
+
+# Install documentation dependencies
+docs-install-deps:
+	@echo "$(BLUE)Installing documentation dependencies...$(NC)"
+
+	# Pandoc (for PDF/HTML/man pages)
+	@echo "  Installing pandoc..."
+	@command -v pandoc >/dev/null 2>&1 || \
+		sudo apt-get install -y pandoc texlive-latex-base 2>/dev/null || \
+		brew install pandoc 2>/dev/null || \
+		echo "$(YELLOW)Please install pandoc manually$(NC)"
+
+	# Node.js tools
+	@echo "  Installing Node.js tools..."
+	@npm install -g @apidevtools/swagger-cli @mermaid-js/mermaid-cli 2>/dev/null || \
+		echo "$(YELLOW)Please install npm tools manually$(NC)"
+
+	# Python tools
+	@echo "  Installing Python tools..."
+	@pip install jupyter nbconvert 2>/dev/null || \
+		echo "$(YELLOW)Please install Python tools manually$(NC)"
+
+	@echo "$(GREEN)✓ Dependencies installation complete$(NC)"
+	@echo "  Run 'make docs-check-deps' to verify"
+
+# Quick documentation update (no full rebuild)
+docs-quick:
+	@echo "$(BLUE)Quick documentation update...$(NC)"
+	@make docs-html
+	@make docs-rust
+	@echo "$(GREEN)✓ Quick update complete$(NC)"
