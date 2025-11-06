@@ -18,6 +18,10 @@ pub mod concurrency;
 pub mod result_ext;
 pub mod types;
 
+// Property-based testing support (feature-gated)
+#[cfg(any(test, feature = "proptest-support"))]
+pub mod proptest_support;
+
 // Re-export commonly used items
 pub use error::{MefError, MefResult};
 pub use time::{current_timestamp, current_timestamp_millis};

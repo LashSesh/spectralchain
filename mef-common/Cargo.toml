@@ -16,6 +16,13 @@ tracing.workspace = true
 parking_lot = "0.12"
 hex = "0.4"
 
+# Optional dependencies
+proptest = { workspace = true, optional = true }
+
 [dev-dependencies]
 proptest.workspace = true
 tokio-test = "0.4"
+
+[features]
+default = []
+proptest-support = ["proptest"]

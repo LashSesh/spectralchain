@@ -31,5 +31,6 @@ image.workspace = true
 proptest = "1.4"
 
 [dev-dependencies]
+mef-common = { workspace = true, features = ["proptest-support"] }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 criterion = "0.5"
