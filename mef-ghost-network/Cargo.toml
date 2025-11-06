@@ -1,0 +1,24 @@
+[package]
+name = "mef-ghost-network"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+blake3.workspace = true
+rand.workspace = true
+
+# Quantum ops
+mef-quantum-ops = { path = "../mef-quantum-ops" }
+
+# Networking
+libp2p.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
