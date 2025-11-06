@@ -351,12 +351,12 @@ impl DiscoveryEngine {
             // - masked_payload = beacon data
             // - stego_carrier = same data (no steganography for beacons)
             let packet = GhostPacket::new(
-                identity.resonance,        // target_resonance
-                identity.resonance,        // sender_resonance
-                beacon_bytes.clone(),      // masked_payload
-                beacon_bytes,              // stego_carrier
-                CarrierType::Raw,          // carrier_type
-                None,                      // zk_proof
+                identity.resonance,   // target_resonance
+                identity.resonance,   // sender_resonance
+                beacon_bytes.clone(), // masked_payload
+                beacon_bytes,         // stego_carrier
+                CarrierType::Raw,     // carrier_type
+                None,                 // zk_proof
             );
 
             // Broadcast via transport

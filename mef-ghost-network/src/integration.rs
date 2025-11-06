@@ -133,9 +133,8 @@ impl GhostNetworkNode {
         // Create trait object wrapper for broadcast and discovery
         // We wrap the Arc<Mutex<Libp2pTransport>> in TransportWrapper which implements Transport
         // Then wrap that in Arc<Mutex<dyn Transport>> for sharing between engines
-        let transport_trait: Arc<Mutex<dyn Transport>> = Arc::new(Mutex::new(
-            TransportWrapper::new(transport.clone()),
-        ));
+        let transport_trait: Arc<Mutex<dyn Transport>> =
+            Arc::new(Mutex::new(TransportWrapper::new(transport.clone())));
 
         // Create broadcast engine with transport
         let broadcast = Arc::new(BroadcastEngine::with_transport(
