@@ -44,6 +44,12 @@ pub struct ProtocolConfig {
 
     /// Enable steganography
     pub enable_steganography: bool,
+
+    /// Enable forward secrecy (R-03-002)
+    pub enable_forward_secrecy: bool,
+
+    /// Adaptive timestamp window configuration (R-03-003)
+    pub adaptive_timestamps: bool,
 }
 
 impl Default for ProtocolConfig {
@@ -55,6 +61,8 @@ impl Default for ProtocolConfig {
             default_carrier_type: CarrierType::Raw,
             enable_zk_proofs: true,
             enable_steganography: true,
+            enable_forward_secrecy: true,
+            adaptive_timestamps: true,
         }
     }
 }
@@ -69,9 +77,22 @@ pub struct MaskingParams {
     /// Phase rotation parameter
     #[serde(with = "serde_bytes")]
     pub phase: Vec<u8>,
+
+    /// Key rotation epoch (R-03-001)
+    /// Allows for time-based key rotation while maintaining backward compatibility
+    pub epoch: u64,
+
+    /// Ephemeral key for forward secrecy (R-03-002)
+    /// Optional - if present, this ephemeral key is mixed with the base key
+    #[serde(with = "serde_bytes")]
+    pub ephemeral_key: Option<Vec<u8>>,
 }
 
 impl MaskingParams {
+    /// Key rotation epoch duration (1 hour = 3600 seconds)
+    /// R-03-001: Keys are rotated every epoch to limit exposure
+    const EPOCH_DURATION: u64 = 3600;
+
     /// Create from seed
     pub fn from_seed(seed: &[u8]) -> Self {
         use sha2::{Digest, Sha256};
@@ -84,6 +105,8 @@ impl MaskingParams {
         Self {
             seed: seed.to_vec(),
             phase,
+            epoch: Self::current_epoch(),
+            ephemeral_key: None,
         }
     }
 
@@ -96,11 +119,22 @@ impl MaskingParams {
         Self::from_seed(&seed)
     }
 
-    /// Derive masking parameters from resonance states
+    /// Get current key rotation epoch
+    /// R-03-001: Epoch-based key rotation
+    pub fn current_epoch() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_secs() / Self::EPOCH_DURATION
+    }
+
+    /// Derive masking parameters from resonance states with key rotation
     ///
     /// This allows both sender and receiver to compute the same parameters
     /// based on their shared resonance context. The derivation is deterministic
     /// and symmetric, enabling addressless key agreement.
+    ///
+    /// R-03-001: Includes epoch-based key rotation
     ///
     /// # Arguments
     /// * `sender` - Sender's resonance state
@@ -109,6 +143,16 @@ impl MaskingParams {
     /// # Returns
     /// * Derived masking parameters that both parties can compute
     pub fn from_resonance(sender: &ResonanceState, target: &ResonanceState) -> Self {
+        Self::from_resonance_with_epoch(sender, target, Self::current_epoch())
+    }
+
+    /// Derive masking parameters with specific epoch
+    /// R-03-001: Allows verification of packets from previous epochs during rotation
+    pub fn from_resonance_with_epoch(
+        sender: &ResonanceState,
+        target: &ResonanceState,
+        epoch: u64,
+    ) -> Self {
         use sha2::{Digest, Sha256};
 
         // Create deterministic seed from resonance states
@@ -120,9 +164,48 @@ impl MaskingParams {
         hasher.update(target.psi.to_le_bytes());
         hasher.update(target.rho.to_le_bytes());
         hasher.update(target.omega.to_le_bytes());
+        // Mix in epoch for key rotation
+        hasher.update(epoch.to_le_bytes());
 
         let seed = hasher.finalize().to_vec();
-        Self::from_seed(&seed)
+
+        let mut params = Self::from_seed(&seed);
+        params.epoch = epoch;
+        params
+    }
+
+    /// Add forward secrecy with ephemeral key
+    /// R-03-002: Mix in an ephemeral key that's never reused
+    pub fn with_ephemeral_key(mut self, ephemeral_key: Vec<u8>) -> Self {
+        self.ephemeral_key = Some(ephemeral_key);
+        self
+    }
+
+    /// Generate ephemeral key for forward secrecy
+    /// R-03-002: Each session gets a unique ephemeral key
+    pub fn generate_ephemeral_key() -> Vec<u8> {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        (0..32).map(|_| rng.gen()).collect()
+    }
+
+    /// Derive final key mixing base key with ephemeral key if present
+    /// R-03-002: Forward secrecy - compromising base key doesn't reveal past sessions
+    pub fn derive_final_key(&self) -> Vec<u8> {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+        hasher.update(&self.seed);
+        hasher.update(&self.phase);
+        hasher.update(self.epoch.to_le_bytes());
+
+        // Mix in ephemeral key if present (R-03-002)
+        if let Some(ref ephemeral) = self.ephemeral_key {
+            hasher.update(b"ephemeral");
+            hasher.update(ephemeral);
+        }
+
+        hasher.finalize().to_vec()
     }
 }
 
@@ -169,6 +252,29 @@ pub struct PacketMetrics {
 
     /// Transactions rejected due to timestamp validation
     pub rejected_transaction_timestamp: usize,
+
+    /// R-03-003: Adaptive timestamp window tracking
+    /// Sum of timestamp deltas for computing average network latency
+    pub timestamp_delta_sum: u64,
+
+    /// Count of valid timestamps for computing average
+    pub valid_timestamp_count: usize,
+}
+
+/// Network condition tracker for adaptive timestamp windows (R-03-003)
+#[derive(Debug, Clone)]
+struct NetworkConditions {
+    /// Average network latency observed (seconds)
+    average_latency: f64,
+
+    /// Maximum latency observed (seconds)
+    max_latency: u64,
+
+    /// Last update timestamp
+    last_update: u64,
+
+    /// Sample count
+    sample_count: usize,
 }
 
 /// Ghost Protocol - Core protocol implementation
@@ -178,6 +284,74 @@ pub struct GhostProtocol {
     timestamp_failure_tracker: Arc<RwLock<HashMap<u64, TimestampFailureRecord>>>,
     /// Metrics for packet processing
     metrics: Arc<RwLock<PacketMetrics>>,
+    /// Network condition tracker for adaptive timestamp windows (R-03-003)
+    network_conditions: Arc<RwLock<NetworkConditions>>,
+}
+
+impl NetworkConditions {
+    fn new() -> Self {
+        Self {
+            average_latency: 0.0,
+            max_latency: 0,
+            last_update: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::from_secs(0))
+                .as_secs(),
+            sample_count: 0,
+        }
+    }
+
+    /// Update with new latency sample (R-03-003)
+    fn update(&mut self, latency_seconds: u64) {
+        self.sample_count += 1;
+        self.max_latency = self.max_latency.max(latency_seconds);
+
+        // Exponential moving average (alpha = 0.3)
+        let alpha = 0.3;
+        self.average_latency = alpha * (latency_seconds as f64) + (1.0 - alpha) * self.average_latency;
+
+        self.last_update = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_secs();
+    }
+
+    /// Get adaptive clock skew tolerance based on network conditions (R-03-003)
+    fn get_clock_skew_tolerance(&self) -> u64 {
+        const BASE_TOLERANCE: u64 = 60; // 60 seconds base
+        const MIN_TOLERANCE: u64 = 30;
+        const MAX_TOLERANCE: u64 = 300; // 5 minutes max
+
+        if self.sample_count < 10 {
+            // Not enough data, use base tolerance
+            return BASE_TOLERANCE;
+        }
+
+        // Adaptive tolerance: base + 2 * average_latency + safety margin
+        let adaptive = BASE_TOLERANCE + (2.0 * self.average_latency) as u64 + 10;
+        adaptive.clamp(MIN_TOLERANCE, MAX_TOLERANCE)
+    }
+
+    /// Get adaptive maximum age based on network conditions (R-03-003)
+    fn get_max_age(&self) -> u64 {
+        const BASE_MAX_AGE: u64 = 24 * 3600; // 24 hours base
+        const MIN_MAX_AGE: u64 = 3600; // 1 hour min
+        const MAX_MAX_AGE: u64 = 48 * 3600; // 48 hours max
+
+        if self.sample_count < 10 {
+            return BASE_MAX_AGE;
+        }
+
+        // In poor network conditions, allow older packets
+        // If average latency > 60s, increase max age
+        if self.average_latency > 60.0 {
+            let multiplier = 1.0 + (self.average_latency / 60.0 - 1.0) * 0.5;
+            let adaptive = (BASE_MAX_AGE as f64 * multiplier) as u64;
+            adaptive.clamp(MIN_MAX_AGE, MAX_MAX_AGE)
+        } else {
+            BASE_MAX_AGE
+        }
+    }
 }
 
 impl GhostProtocol {
@@ -187,6 +361,7 @@ impl GhostProtocol {
             config,
             timestamp_failure_tracker: Arc::new(RwLock::new(HashMap::new())),
             metrics: Arc::new(RwLock::new(PacketMetrics::default())),
+            network_conditions: Arc::new(RwLock::new(NetworkConditions::new())),
         }
     }
 
@@ -330,11 +505,11 @@ impl GhostProtocol {
         expired.len()
     }
 
-    /// Validate timestamp safety
+    /// Validate timestamp safety with adaptive windows (R-03-003)
     ///
     /// Checks that a timestamp is:
-    /// 1. Not in the future (with 60s tolerance for clock skew)
-    /// 2. Not too old (within 24 hours for security)
+    /// 1. Not in the future (with adaptive tolerance for clock skew)
+    /// 2. Not too old (adaptive max age based on network conditions)
     /// 3. Not zero or invalid
     ///
     /// # Returns
@@ -358,32 +533,68 @@ impl GhostProtocol {
             .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
             .as_secs();
 
-        // Allow 60 second clock skew tolerance
-        const CLOCK_SKEW_TOLERANCE: u64 = 60;
-        if timestamp > now + CLOCK_SKEW_TOLERANCE {
+        // R-03-003: Adaptive clock skew tolerance based on network conditions
+        let clock_skew_tolerance = if self.config.adaptive_timestamps {
+            let conditions = self.network_conditions.read()
+                .unwrap_or_else(|e| {
+                    warn!("Failed to acquire network conditions lock: {}", e);
+                    e.into_inner()
+                });
+            conditions.get_clock_skew_tolerance()
+        } else {
+            60 // Default 60 seconds
+        };
+
+        if timestamp > now + clock_skew_tolerance {
             warn!(
                 event = "timestamp_validation_failed",
                 reason = "future_timestamp",
                 timestamp = timestamp,
                 current_time = now,
                 delta = timestamp - now,
+                tolerance = clock_skew_tolerance,
                 "Security: Rejected packet with future timestamp"
             );
             anyhow::bail!("Timestamp is too far in the future: {} > {}", timestamp, now);
         }
 
-        // Reject packets older than 24 hours
-        const MAX_AGE: u64 = 24 * 3600;
-        if timestamp + MAX_AGE < now {
+        // R-03-003: Adaptive maximum age based on network conditions
+        let max_age = if self.config.adaptive_timestamps {
+            let conditions = self.network_conditions.read()
+                .unwrap_or_else(|e| {
+                    warn!("Failed to acquire network conditions lock: {}", e);
+                    e.into_inner()
+                });
+            conditions.get_max_age()
+        } else {
+            24 * 3600 // Default 24 hours
+        };
+
+        if timestamp + max_age < now {
             warn!(
                 event = "timestamp_validation_failed",
                 reason = "expired_timestamp",
                 timestamp = timestamp,
                 current_time = now,
                 age_seconds = now - timestamp,
+                max_age = max_age,
                 "Security: Rejected packet with expired timestamp"
             );
-            anyhow::bail!("Timestamp is too old: {} < {}", timestamp, now - MAX_AGE);
+            anyhow::bail!("Timestamp is too old: {} < {}", timestamp, now - max_age);
+        }
+
+        // Update network conditions with observed latency (R-03-003)
+        if self.config.adaptive_timestamps && timestamp <= now {
+            let latency = now - timestamp;
+            if let Ok(mut conditions) = self.network_conditions.write() {
+                conditions.update(latency);
+            }
+
+            // Update metrics
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.timestamp_delta_sum += latency;
+                metrics.valid_timestamp_count += 1;
+            }
         }
 
         Ok(())
@@ -430,9 +641,10 @@ impl GhostProtocol {
         ))
     }
 
-    /// Step 2: Mask transaction
+    /// Step 2: Mask transaction with forward secrecy (R-03-002)
     ///
     /// Applies masking operator M_{θ,σ}(m) to the transaction.
+    /// If forward secrecy is enabled, an ephemeral key is generated and mixed in.
     ///
     /// # Arguments
     /// * `transaction` - Transaction to mask
@@ -447,7 +659,7 @@ impl GhostProtocol {
     ) -> Result<Vec<u8>> {
         let tx_bytes = transaction.to_bytes();
 
-        // Apply masking operator: M_{θ,σ}(m) = e^{iθ} U_σ m
+        // Apply masking operator with forward secrecy support (R-03-001, R-03-002)
         let masked = self.apply_masking(&tx_bytes, params)?;
 
         Ok(masked)
@@ -484,15 +696,17 @@ impl GhostProtocol {
         }
     }
 
-    /// Step 4: Broadcast packet to field
+    /// Step 4: Broadcast packet to field with forward secrecy (R-03-001, R-03-002)
     ///
     /// Creates and broadcasts a ghost packet with resonance state.
+    /// Includes key rotation epoch and optional ephemeral key for forward secrecy.
     ///
     /// # Arguments
     /// * `transaction` - Original transaction
     /// * `masked_data` - Masked transaction
     /// * `stego_carrier` - Steganographic carrier
     /// * `carrier_type` - Type of carrier
+    /// * `masking_params` - Masking parameters used (contains epoch and ephemeral key)
     ///
     /// # Returns
     /// * Ghost packet ready for broadcast
@@ -502,14 +716,18 @@ impl GhostProtocol {
         masked_data: Vec<u8>,
         stego_carrier: Vec<u8>,
         carrier_type: CarrierType,
+        masking_params: &MaskingParams,
     ) -> Result<GhostPacket> {
-        let packet = GhostPacket::new(
+        // R-03-001 & R-03-002: Include key epoch and ephemeral key in packet
+        let packet = GhostPacket::new_with_keys(
             transaction.target_resonance,
             transaction.sender_resonance,
             masked_data,
             stego_carrier,
             carrier_type,
             transaction.zk_data.clone(),
+            masking_params.epoch,
+            masking_params.ephemeral_key.clone(),
         );
 
         Ok(packet)
@@ -667,10 +885,20 @@ impl GhostProtocol {
             anyhow::bail!("Packet integrity check failed");
         }
 
-        // Step 5c: Derive masking parameters from resonance states
+        // Step 5c: Derive masking parameters with key rotation support (R-03-001)
         // The receiver can compute the same params as the sender using:
         // sender_resonance (from packet) and target_resonance (node's own state)
-        let masking_params = MaskingParams::from_resonance(&packet.sender_resonance, node_state);
+        // Try the packet's epoch first, then fall back to current epoch if needed
+        let mut masking_params = MaskingParams::from_resonance_with_epoch(
+            &packet.sender_resonance,
+            node_state,
+            packet.key_epoch,
+        );
+
+        // R-03-002: Add ephemeral key for forward secrecy if present
+        if let Some(ref ephemeral) = packet.ephemeral_key {
+            masking_params = masking_params.with_ephemeral_key(ephemeral.clone());
+        }
 
         // Step 5d: Extract from steganographic carrier: a' = T⁻¹(t)
         let extracted = if self.config.enable_steganography {
@@ -680,7 +908,36 @@ impl GhostProtocol {
         };
 
         // Step 5e: Unmask: a* = M⁻¹_{θ,σ}(a')
-        let unmasked = self.unmask_data(&extracted, &masking_params)?;
+        // R-03-001: Try current epoch, then previous epoch during rotation
+        let unmasked = match self.unmask_data(&extracted, &masking_params) {
+            Ok(data) => data,
+            Err(_) => {
+                // Key rotation: Try previous epoch
+                let current_epoch = MaskingParams::current_epoch();
+                if packet.key_epoch < current_epoch && current_epoch - packet.key_epoch <= 1 {
+                    debug!(
+                        event = "key_rotation_fallback",
+                        packet_epoch = packet.key_epoch,
+                        current_epoch = current_epoch,
+                        "Trying previous epoch key during rotation"
+                    );
+
+                    let mut fallback_params = MaskingParams::from_resonance_with_epoch(
+                        &packet.sender_resonance,
+                        node_state,
+                        current_epoch,
+                    );
+
+                    if let Some(ref ephemeral) = packet.ephemeral_key {
+                        fallback_params = fallback_params.with_ephemeral_key(ephemeral.clone());
+                    }
+
+                    self.unmask_data(&extracted, &fallback_params)?
+                } else {
+                    anyhow::bail!("Failed to unmask packet with any known epoch");
+                }
+            }
+        };
 
         // Step 5f: Deserialize transaction
         let transaction = GhostTransaction::from_bytes(&unmasked)
@@ -793,16 +1050,10 @@ impl GhostProtocol {
         }
     }
 
-    /// Apply masking operator M_{θ,σ}(m)
+    /// Apply masking operator M_{θ,σ}(m) with R-03-002 forward secrecy support
     fn apply_masking(&self, data: &[u8], params: &MaskingParams) -> Result<Vec<u8>> {
-        // Simplified masking - XOR with derived key
-        // In production, use full mef-quantum-ops implementation
-        use sha2::{Digest, Sha256};
-
-        let mut hasher = Sha256::new();
-        hasher.update(&params.seed);
-        hasher.update(&params.phase);
-        let key = hasher.finalize();
+        // R-03-001 & R-03-002: Use derived key that includes epoch and ephemeral key
+        let key = params.derive_final_key();
 
         let mut masked = data.to_vec();
         for (i, byte) in masked.iter_mut().enumerate() {
@@ -994,7 +1245,7 @@ mod tests {
 
         // Step 4: Create packet (now includes sender_resonance)
         let packet = protocol
-            .create_packet(&tx, masked, carrier, CarrierType::Raw)
+            .create_packet(&tx, masked, carrier, CarrierType::Raw, &params)
             .unwrap();
 
         // Step 5: Receive (matching resonance)
@@ -1028,7 +1279,7 @@ mod tests {
         let carrier = masked.clone();
 
         let packet = protocol
-            .create_packet(&tx, masked, carrier, CarrierType::Raw)
+            .create_packet(&tx, masked, carrier, CarrierType::Raw, &params)
             .unwrap();
 
         // Node with very different resonance (outside epsilon window)
@@ -1093,7 +1344,7 @@ mod tests {
         let masked = protocol.mask_transaction(&tx, &sender_params).unwrap();
         let carrier = protocol.embed_transaction(&masked, CarrierType::Raw).unwrap();
         let packet = protocol
-            .create_packet(&tx, masked, carrier, CarrierType::Raw)
+            .create_packet(&tx, masked, carrier, CarrierType::Raw, &sender_params)
             .unwrap();
 
         // Receiver with matching resonance

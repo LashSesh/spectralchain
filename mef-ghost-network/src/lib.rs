@@ -177,8 +177,16 @@ impl GhostNetwork {
         )?;
 
         // Step 2: Mask transaction with resonance-derived parameters
-        // This allows the receiver to derive the same params from resonance states
-        let params = MaskingParams::from_resonance(&identity.resonance, &target_resonance);
+        // R-03-001: Uses current epoch for key rotation
+        // R-03-002: Optionally adds forward secrecy
+        let mut params = MaskingParams::from_resonance(&identity.resonance, &target_resonance);
+
+        // R-03-002: Add forward secrecy if enabled
+        if self.protocol.config.enable_forward_secrecy {
+            let ephemeral_key = MaskingParams::generate_ephemeral_key();
+            params = params.with_ephemeral_key(ephemeral_key);
+        }
+
         let masked = self.protocol.mask_transaction(&tx, &params)?;
 
         // Step 3: Embed in carrier
@@ -187,12 +195,13 @@ impl GhostNetwork {
             CarrierType::Raw,
         )?;
 
-        // Step 4: Create packet
+        // Step 4: Create packet with key epoch and ephemeral key
         let packet = self.protocol.create_packet(
             &tx,
             masked,
             carrier,
             CarrierType::Raw,
+            &params,
         )?;
 
         // Step 5: Broadcast

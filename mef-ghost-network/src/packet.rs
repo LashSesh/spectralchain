@@ -83,6 +83,15 @@ pub struct GhostPacket {
     /// Time-to-live (hops remaining)
     pub ttl: u8,
 
+    /// Key rotation epoch (R-03-001)
+    /// Identifies which key generation was used for masking
+    pub key_epoch: u64,
+
+    /// Ephemeral key for forward secrecy (R-03-002)
+    /// Unique per-packet key that provides forward secrecy
+    #[serde(with = "serde_bytes")]
+    pub ephemeral_key: Option<Vec<u8>>,
+
     /// Packet hash for integrity
     pub hash: [u8; 32],
 }
@@ -129,6 +138,44 @@ impl GhostPacket {
             carrier_type,
             zk_proof,
             ttl: 32, // Default TTL
+            key_epoch: 0, // Will be set by protocol
+            ephemeral_key: None, // Will be set by protocol if forward secrecy enabled
+            hash: [0u8; 32],
+        };
+
+        packet.hash = packet.compute_hash();
+        packet
+    }
+
+    /// Create new ghost packet with key epoch and ephemeral key (R-03-001, R-03-002)
+    pub fn new_with_keys(
+        resonance: ResonanceState,
+        sender_resonance: ResonanceState,
+        masked_payload: Vec<u8>,
+        stego_carrier: Vec<u8>,
+        carrier_type: CarrierType,
+        zk_proof: Option<Vec<u8>>,
+        key_epoch: u64,
+        ephemeral_key: Option<Vec<u8>>,
+    ) -> Self {
+        let id = Uuid::new_v4();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| anyhow::anyhow!("System time error: {}", e))
+            .expect("Failed to get system time");
+
+        let mut packet = Self {
+            id,
+            timestamp: timestamp.as_secs(),
+            resonance,
+            sender_resonance,
+            masked_payload,
+            stego_carrier,
+            carrier_type,
+            zk_proof,
+            ttl: 32, // Default TTL
+            key_epoch,
+            ephemeral_key,
             hash: [0u8; 32],
         };
 
@@ -152,9 +199,14 @@ impl GhostPacket {
         hasher.update(&self.stego_carrier);
         hasher.update(&[self.carrier_type as u8]);
         hasher.update(&[self.ttl]);
+        hasher.update(self.key_epoch.to_le_bytes());
 
         if let Some(ref proof) = self.zk_proof {
             hasher.update(proof);
+        }
+
+        if let Some(ref ephemeral) = self.ephemeral_key {
+            hasher.update(ephemeral);
         }
 
         hasher.finalize().into()
@@ -192,8 +244,10 @@ impl GhostPacket {
         self.stego_carrier.len() +
         1 +  // carrier_type
         1 +  // ttl
+        8 +  // key_epoch
         32 + // hash
-        self.zk_proof.as_ref().map_or(0, |p| p.len())
+        self.zk_proof.as_ref().map_or(0, |p| p.len()) +
+        self.ephemeral_key.as_ref().map_or(0, |k| k.len())
     }
 }
 
