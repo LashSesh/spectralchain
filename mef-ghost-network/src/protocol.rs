@@ -14,7 +14,10 @@
 use crate::packet::{CarrierType, GhostPacket, GhostTransaction, ResonanceState};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tracing::{error, warn, info, debug};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // Import quantum operators from mef-quantum-ops
@@ -123,20 +126,208 @@ impl MaskingParams {
     }
 }
 
+/// Rate limiter for tracking timestamp validation failures
+#[derive(Debug, Clone)]
+struct TimestampFailureRecord {
+    /// Number of failures
+    count: usize,
+    /// First failure timestamp
+    first_failure: u64,
+    /// Last failure timestamp
+    last_failure: u64,
+}
+
+/// Metrics for packet processing
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PacketMetrics {
+    /// Total packets received
+    pub packets_received: usize,
+
+    /// Packets accepted (successfully processed)
+    pub packets_accepted: usize,
+
+    /// Packets rejected due to rate limiting
+    pub rejected_rate_limited: usize,
+
+    /// Packets rejected due to timestamp validation
+    pub rejected_timestamp_invalid: usize,
+
+    /// Packets rejected due to invalid resonance values
+    pub rejected_invalid_resonance: usize,
+
+    /// Packets rejected due to empty payload
+    pub rejected_empty_payload: usize,
+
+    /// Packets rejected due to integrity check failure
+    pub rejected_integrity_failed: usize,
+
+    /// Packets rejected due to ZK proof failure
+    pub rejected_zk_proof_failed: usize,
+
+    /// Packets ignored due to resonance mismatch (not a rejection)
+    pub packets_ignored_resonance_mismatch: usize,
+
+    /// Transactions rejected due to timestamp validation
+    pub rejected_transaction_timestamp: usize,
+}
+
 /// Ghost Protocol - Core protocol implementation
 pub struct GhostProtocol {
     config: ProtocolConfig,
+    /// Rate limiter for timestamp failures (key: sender resonance hash)
+    timestamp_failure_tracker: Arc<RwLock<HashMap<u64, TimestampFailureRecord>>>,
+    /// Metrics for packet processing
+    metrics: Arc<RwLock<PacketMetrics>>,
 }
 
 impl GhostProtocol {
     /// Create new protocol instance
     pub fn new(config: ProtocolConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            timestamp_failure_tracker: Arc::new(RwLock::new(HashMap::new())),
+            metrics: Arc::new(RwLock::new(PacketMetrics::default())),
+        }
     }
 
     /// Create with default configuration
     pub fn default() -> Self {
         Self::new(ProtocolConfig::default())
+    }
+
+    /// Get current metrics
+    pub fn get_metrics(&self) -> PacketMetrics {
+        self.metrics.read()
+            .unwrap_or_else(|e| {
+                warn!("Failed to acquire metrics lock: {}", e);
+                e.into_inner()
+            })
+            .clone()
+    }
+
+    /// Reset metrics
+    pub fn reset_metrics(&self) {
+        let mut metrics = self.metrics.write()
+            .unwrap_or_else(|e| {
+                warn!("Failed to acquire metrics lock: {}", e);
+                e.into_inner()
+            });
+        *metrics = PacketMetrics::default();
+    }
+
+    /// Hash resonance state to use as rate limiter key
+    fn hash_resonance(&self, resonance: &ResonanceState) -> u64 {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+
+        let mut hasher = DefaultHasher::new();
+        // Hash the resonance values as bytes
+        resonance.psi.to_bits().hash(&mut hasher);
+        resonance.rho.to_bits().hash(&mut hasher);
+        resonance.omega.to_bits().hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Check if source is rate limited for timestamp failures
+    /// Returns true if rate limit exceeded
+    fn check_timestamp_failure_rate_limit(&self, sender_resonance: &ResonanceState) -> bool {
+        const MAX_FAILURES: usize = 10; // Max 10 failures
+        const WINDOW_SECONDS: u64 = 60; // Within 60 seconds
+
+        let resonance_hash = self.hash_resonance(sender_resonance);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let mut tracker = match self.timestamp_failure_tracker.write() {
+            Ok(guard) => guard,
+            Err(e) => {
+                warn!("Failed to acquire rate limiter lock: {}", e);
+                return false; // Don't rate limit on lock failure
+            }
+        };
+
+        if let Some(record) = tracker.get(&resonance_hash) {
+            // Check if within time window
+            if now - record.first_failure < WINDOW_SECONDS {
+                if record.count >= MAX_FAILURES {
+                    warn!(
+                        event = "rate_limit_applied",
+                        reason = "timestamp_failures",
+                        resonance = ?(sender_resonance.psi, sender_resonance.rho, sender_resonance.omega),
+                        failure_count = record.count,
+                        window_seconds = WINDOW_SECONDS,
+                        "Rate limit applied: too many timestamp validation failures"
+                    );
+                    return true; // Rate limit exceeded
+                }
+            } else {
+                // Window expired, reset counter
+                tracker.remove(&resonance_hash);
+            }
+        }
+
+        false
+    }
+
+    /// Record a timestamp validation failure
+    fn record_timestamp_failure(&self, sender_resonance: &ResonanceState) {
+        let resonance_hash = self.hash_resonance(sender_resonance);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let mut tracker = match self.timestamp_failure_tracker.write() {
+            Ok(guard) => guard,
+            Err(e) => {
+                warn!("Failed to acquire rate limiter lock: {}", e);
+                return;
+            }
+        };
+
+        tracker
+            .entry(resonance_hash)
+            .and_modify(|record| {
+                record.count += 1;
+                record.last_failure = now;
+            })
+            .or_insert(TimestampFailureRecord {
+                count: 1,
+                first_failure: now,
+                last_failure: now,
+            });
+    }
+
+    /// Cleanup expired rate limit records (should be called periodically)
+    pub fn cleanup_rate_limiters(&self) -> usize {
+        const WINDOW_SECONDS: u64 = 60;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let mut tracker = match self.timestamp_failure_tracker.write() {
+            Ok(guard) => guard,
+            Err(e) => {
+                warn!("Failed to acquire rate limiter lock for cleanup: {}", e);
+                return 0;
+            }
+        };
+
+        let expired: Vec<u64> = tracker
+            .iter()
+            .filter(|(_, record)| now - record.first_failure >= WINDOW_SECONDS)
+            .map(|(key, _)| *key)
+            .collect();
+
+        for key in expired.iter() {
+            tracker.remove(key);
+        }
+
+        expired.len()
     }
 
     /// Validate timestamp safety
@@ -153,6 +344,12 @@ impl GhostProtocol {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         if timestamp == 0 {
+            warn!(
+                event = "timestamp_validation_failed",
+                reason = "zero_timestamp",
+                timestamp = timestamp,
+                "Security: Rejected packet with zero timestamp"
+            );
             anyhow::bail!("Timestamp cannot be zero");
         }
 
@@ -164,12 +361,28 @@ impl GhostProtocol {
         // Allow 60 second clock skew tolerance
         const CLOCK_SKEW_TOLERANCE: u64 = 60;
         if timestamp > now + CLOCK_SKEW_TOLERANCE {
+            warn!(
+                event = "timestamp_validation_failed",
+                reason = "future_timestamp",
+                timestamp = timestamp,
+                current_time = now,
+                delta = timestamp - now,
+                "Security: Rejected packet with future timestamp"
+            );
             anyhow::bail!("Timestamp is too far in the future: {} > {}", timestamp, now);
         }
 
         // Reject packets older than 24 hours
         const MAX_AGE: u64 = 24 * 3600;
         if timestamp + MAX_AGE < now {
+            warn!(
+                event = "timestamp_validation_failed",
+                reason = "expired_timestamp",
+                timestamp = timestamp,
+                current_time = now,
+                age_seconds = now - timestamp,
+                "Security: Rejected packet with expired timestamp"
+            );
             anyhow::bail!("Timestamp is too old: {} < {}", timestamp, now - MAX_AGE);
         }
 
@@ -318,36 +531,139 @@ impl GhostProtocol {
         packet: &GhostPacket,
         node_state: &ResonanceState,
     ) -> Result<Option<GhostTransaction>> {
+        // Increment total packets received
+        if let Ok(mut metrics) = self.metrics.write() {
+            metrics.packets_received += 1;
+        }
+
+        // Check rate limiting for timestamp failures
+        if self.check_timestamp_failure_rate_limit(&packet.sender_resonance) {
+            // Increment rate limited metric
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.rejected_rate_limited += 1;
+            }
+
+            error!(
+                event = "packet_rejected",
+                reason = "rate_limited",
+                packet_id = %packet.id,
+                sender_resonance = ?(packet.sender_resonance.psi, packet.sender_resonance.rho, packet.sender_resonance.omega),
+                "Security: Packet rejected due to rate limiting (too many timestamp failures)"
+            );
+            anyhow::bail!("Rate limit exceeded for timestamp validation failures");
+        }
+
         // Runtime Invariant: Validate packet timestamp safety (R-01-003)
-        self.validate_timestamp(packet.timestamp)
-            .context("Packet timestamp validation failed")?;
+        if let Err(e) = self.validate_timestamp(packet.timestamp) {
+            // Record the failure for rate limiting
+            self.record_timestamp_failure(&packet.sender_resonance);
+
+            // Increment metric
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.rejected_timestamp_invalid += 1;
+            }
+
+            error!(
+                event = "packet_rejected",
+                reason = "timestamp_invalid",
+                packet_id = %packet.id,
+                timestamp = packet.timestamp,
+                error = %e,
+                "Security: Packet rejected due to timestamp validation failure"
+            );
+            return Err(e).context("Packet timestamp validation failed");
+        }
 
         // Runtime Invariant: Resonance values must be finite (R-01-002)
         if !packet.resonance.psi.is_finite() ||
            !packet.resonance.rho.is_finite() ||
            !packet.resonance.omega.is_finite() {
+            // Increment metric
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.rejected_invalid_resonance += 1;
+            }
+
+            error!(
+                event = "packet_rejected",
+                reason = "invalid_resonance",
+                packet_id = %packet.id,
+                psi = packet.resonance.psi,
+                rho = packet.resonance.rho,
+                omega = packet.resonance.omega,
+                "Security: Packet rejected due to non-finite resonance values"
+            );
             anyhow::bail!("Invalid packet: resonance values must be finite");
         }
 
         if !packet.sender_resonance.psi.is_finite() ||
            !packet.sender_resonance.rho.is_finite() ||
            !packet.sender_resonance.omega.is_finite() {
+            // Increment metric
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.rejected_invalid_resonance += 1;
+            }
+
+            error!(
+                event = "packet_rejected",
+                reason = "invalid_sender_resonance",
+                packet_id = %packet.id,
+                psi = packet.sender_resonance.psi,
+                rho = packet.sender_resonance.rho,
+                omega = packet.sender_resonance.omega,
+                "Security: Packet rejected due to non-finite sender resonance values"
+            );
             anyhow::bail!("Invalid packet: sender resonance values must be finite");
         }
 
         // Runtime Invariant: Payload must not be empty (R-01-002)
         if packet.masked_payload.is_empty() {
+            // Increment metric
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.rejected_empty_payload += 1;
+            }
+
+            warn!(
+                event = "packet_rejected",
+                reason = "empty_payload",
+                packet_id = %packet.id,
+                "Security: Packet rejected due to empty payload"
+            );
             anyhow::bail!("Invalid packet: masked payload cannot be empty");
         }
 
         // Step 5a: Check resonance R_ε(ψ_node, ψ_pkt)
         if !packet.matches_resonance(node_state, self.config.resonance_epsilon) {
-            // Not resonant - ignore packet
+            // Increment metric
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.packets_ignored_resonance_mismatch += 1;
+            }
+
+            // Not resonant - ignore packet (this is normal, not a security event)
+            debug!(
+                event = "packet_ignored",
+                reason = "resonance_mismatch",
+                packet_id = %packet.id,
+                packet_resonance = ?(packet.resonance.psi, packet.resonance.rho, packet.resonance.omega),
+                node_resonance = ?(node_state.psi, node_state.rho, node_state.omega),
+                epsilon = self.config.resonance_epsilon,
+                "Packet ignored due to resonance mismatch"
+            );
             return Ok(None);
         }
 
         // Step 5b: Verify packet integrity
         if !packet.verify_integrity() {
+            // Increment metric
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.rejected_integrity_failed += 1;
+            }
+
+            error!(
+                event = "packet_rejected",
+                reason = "integrity_check_failed",
+                packet_id = %packet.id,
+                "Security: Packet rejected due to integrity check failure"
+            );
             anyhow::bail!("Packet integrity check failed");
         }
 
@@ -371,15 +687,60 @@ impl GhostProtocol {
             .context("Failed to deserialize transaction")?;
 
         // Runtime Invariant: Validate transaction timestamp (R-01-003)
-        self.validate_timestamp(transaction.timestamp)
-            .context("Transaction timestamp validation failed")?;
+        if let Err(e) = self.validate_timestamp(transaction.timestamp) {
+            // Record the failure for rate limiting
+            self.record_timestamp_failure(&packet.sender_resonance);
+
+            // Increment metric
+            if let Ok(mut metrics) = self.metrics.write() {
+                metrics.rejected_transaction_timestamp += 1;
+            }
+
+            error!(
+                event = "transaction_rejected",
+                reason = "timestamp_invalid",
+                packet_id = %packet.id,
+                transaction_id = %transaction.id,
+                timestamp = transaction.timestamp,
+                error = %e,
+                "Security: Transaction rejected due to timestamp validation failure"
+            );
+            return Err(e).context("Transaction timestamp validation failed");
+        }
 
         // Step 5g: Verify ZK proof if present
         if let Some(ref proof) = transaction.zk_data {
             if self.config.enable_zk_proofs {
-                self.verify_zk_proof(&transaction.action, proof)?;
+                if let Err(e) = self.verify_zk_proof(&transaction.action, proof) {
+                    // Increment metric
+                    if let Ok(mut metrics) = self.metrics.write() {
+                        metrics.rejected_zk_proof_failed += 1;
+                    }
+
+                    error!(
+                        event = "transaction_rejected",
+                        reason = "zk_proof_invalid",
+                        packet_id = %packet.id,
+                        transaction_id = %transaction.id,
+                        error = %e,
+                        "Security: Transaction rejected due to ZK proof verification failure"
+                    );
+                    return Err(e);
+                }
             }
         }
+
+        // Increment packets accepted metric
+        if let Ok(mut metrics) = self.metrics.write() {
+            metrics.packets_accepted += 1;
+        }
+
+        info!(
+            event = "transaction_accepted",
+            packet_id = %packet.id,
+            transaction_id = %transaction.id,
+            "Transaction successfully validated and accepted"
+        );
 
         Ok(Some(transaction))
     }

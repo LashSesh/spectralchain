@@ -12,11 +12,12 @@
  */
 
 use crate::packet::{NodeIdentity, ResonanceState};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tracing::{error, warn, info, debug};
 use uuid::Uuid;
 
 /// Discovery beacon - temporary resonance announcement
@@ -302,10 +303,13 @@ impl DiscoveryEngine {
 
         let beacon_id = beacon.id;
 
-        let mut beacons = self.beacons.write().unwrap();
+        let mut beacons = self.beacons.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on beacons: {}", e))?;
         beacons.insert(beacon_id, beacon);
+        drop(beacons); // Release lock
 
-        let mut stats = self.stats.write().unwrap();
+        let mut stats = self.stats.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         stats.beacons_sent += 1;
 
         Ok(beacon_id)
@@ -314,14 +318,25 @@ impl DiscoveryEngine {
     /// Receive beacon from another node
     pub fn receive_beacon(&self, beacon: DiscoveryBeacon) -> Result<()> {
         if !beacon.is_valid() {
+            warn!(
+                event = "beacon_rejected",
+                reason = "expired",
+                beacon_id = %beacon.id,
+                timestamp = beacon.timestamp,
+                ttl = beacon.ttl_seconds,
+                age = beacon.age(),
+                "Security: Beacon rejected due to expiration"
+            );
             anyhow::bail!("Beacon expired");
         }
 
         let beacon_id = beacon.id;
 
         // Store beacon
-        let mut beacons = self.beacons.write().unwrap();
+        let mut beacons = self.beacons.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on beacons: {}", e))?;
         beacons.insert(beacon_id, beacon.clone());
+        drop(beacons); // Release lock
 
         // Create node identity from beacon
         let node_identity = NodeIdentity {
@@ -332,18 +347,31 @@ impl DiscoveryEngine {
         };
 
         // Add to discovered nodes
-        let mut discovered = self.discovered_nodes.write().unwrap();
-        if let Some(node) = discovered.get_mut(&node_identity.id) {
+        let mut discovered = self.discovered_nodes.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on discovered_nodes: {}", e))?;
+        let is_new_node = if let Some(node) = discovered.get_mut(&node_identity.id) {
             node.update_last_seen();
+            false
         } else {
             let node = DiscoveredNode::new(node_identity, beacon_id, beacon.capabilities);
             discovered.insert(node.identity.id, node);
+            true
+        };
+        drop(discovered); // Release lock
 
-            let mut stats = self.stats.write().unwrap();
+        let mut stats = self.stats.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
+        if is_new_node {
             stats.nodes_discovered += 1;
+            info!(
+                event = "node_discovered",
+                beacon_id = %beacon_id,
+                node_id = %node_identity.id,
+                resonance = ?(node_identity.resonance.psi, node_identity.resonance.rho, node_identity.resonance.omega),
+                capabilities = ?beacon.capabilities,
+                "New node discovered via beacon"
+            );
         }
-
-        let mut stats = self.stats.write().unwrap();
         stats.beacons_received += 1;
 
         Ok(())
@@ -351,7 +379,11 @@ impl DiscoveryEngine {
 
     /// Find nodes matching a resonance state
     pub fn find_nodes(&self, target_resonance: &ResonanceState) -> Vec<DiscoveredNode> {
-        let discovered = self.discovered_nodes.read().unwrap();
+        let discovered = self.discovered_nodes.read()
+            .unwrap_or_else(|e| {
+                eprintln!("Warning: RwLock poisoned in find_nodes: {}", e);
+                e.into_inner()
+            });
 
         discovered
             .values()
@@ -368,7 +400,11 @@ impl DiscoveryEngine {
 
     /// Find nodes with specific capabilities
     pub fn find_nodes_with_capabilities(&self, required_caps: &[String]) -> Vec<DiscoveredNode> {
-        let discovered = self.discovered_nodes.read().unwrap();
+        let discovered = self.discovered_nodes.read()
+            .unwrap_or_else(|e| {
+                eprintln!("Warning: RwLock poisoned in find_nodes_with_capabilities: {}", e);
+                e.into_inner()
+            });
 
         discovered
             .values()
@@ -397,7 +433,8 @@ impl DiscoveryEngine {
         let event = DiscoveryEvent::new(resonance_pattern, duration, event_type);
         let event_id = event.id;
 
-        let mut events = self.events.write().unwrap();
+        let mut events = self.events.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on events: {}", e))?;
         events.insert(event_id, event);
 
         Ok(event_id)
@@ -405,14 +442,19 @@ impl DiscoveryEngine {
 
     /// Participate in discovery event
     pub fn participate_in_event(&self, event_id: Uuid) -> Result<Option<ResonanceState>> {
-        let events = self.events.read().unwrap();
+        let events = self.events.read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on events: {}", e))?;
 
         if let Some(event) = events.get(&event_id) {
             if event.is_active() {
-                let mut stats = self.stats.write().unwrap();
+                let current_resonance = event.current_resonance();
+                drop(events); // Release read lock before acquiring write lock
+
+                let mut stats = self.stats.write()
+                    .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
                 stats.events_participated += 1;
 
-                Ok(event.current_resonance())
+                Ok(current_resonance)
             } else {
                 Ok(None)
             }
@@ -423,7 +465,11 @@ impl DiscoveryEngine {
 
     /// Get all active nodes
     pub fn get_active_nodes(&self) -> Vec<DiscoveredNode> {
-        let discovered = self.discovered_nodes.read().unwrap();
+        let discovered = self.discovered_nodes.read()
+            .unwrap_or_else(|e| {
+                eprintln!("Warning: RwLock poisoned in get_active_nodes: {}", e);
+                e.into_inner()
+            });
 
         discovered
             .values()
@@ -435,7 +481,8 @@ impl DiscoveryEngine {
     /// Cleanup expired beacons and inactive nodes
     pub fn cleanup(&self) -> Result<(usize, usize)> {
         // Cleanup expired beacons
-        let mut beacons = self.beacons.write().unwrap();
+        let mut beacons = self.beacons.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on beacons: {}", e))?;
         let expired_beacons: Vec<Uuid> = beacons
             .iter()
             .filter(|(_, beacon)| !beacon.is_valid())
@@ -445,9 +492,11 @@ impl DiscoveryEngine {
         for id in expired_beacons.iter() {
             beacons.remove(id);
         }
+        drop(beacons); // Release lock
 
         // Cleanup inactive nodes
-        let mut discovered = self.discovered_nodes.write().unwrap();
+        let mut discovered = self.discovered_nodes.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on discovered_nodes: {}", e))?;
         let inactive_nodes: Vec<Uuid> = discovered
             .iter()
             .filter(|(_, node)| !node.is_active(self.node_timeout))
@@ -463,7 +512,12 @@ impl DiscoveryEngine {
 
     /// Get statistics
     pub fn get_stats(&self) -> DiscoveryStats {
-        self.stats.read().unwrap().clone()
+        self.stats.read()
+            .unwrap_or_else(|e| {
+                eprintln!("Warning: RwLock poisoned in get_stats: {}", e);
+                e.into_inner()
+            })
+            .clone()
     }
 
     /// Get active node count
@@ -473,7 +527,11 @@ impl DiscoveryEngine {
 
     /// Get active beacon count
     pub fn active_beacon_count(&self) -> usize {
-        let beacons = self.beacons.read().unwrap();
+        let beacons = self.beacons.read()
+            .unwrap_or_else(|e| {
+                eprintln!("Warning: RwLock poisoned in active_beacon_count: {}", e);
+                e.into_inner()
+            });
         beacons.values().filter(|b| b.is_valid()).count()
     }
 }
