@@ -21,8 +21,8 @@ use libp2p::core::{transport::Transport as Libp2pCoreTrait, upgrade};
 use libp2p::futures::StreamExt;
 use libp2p::{
     gossipsub, identify, noise, ping,
-    swarm::{NetworkBehaviour, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId as Libp2pPeerId, Swarm, SwarmBuilder,
+    swarm::{Config, NetworkBehaviour, SwarmEvent},
+    tcp, yamux, Multiaddr, PeerId as Libp2pPeerId, Swarm,
 };
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -182,7 +182,7 @@ impl Libp2pTransport {
         };
 
         // Build swarm using new libp2p 0.53 API
-        let swarm = Swarm::new(transport, behaviour, libp2p_peer_id, Default::default());
+        let swarm = Swarm::new(transport, behaviour, libp2p_peer_id, Config::with_tokio_executor());
 
         let codec = PacketCodec::new(config.wire_format);
         let peer_manager = Arc::new(RwLock::new(PeerManager::default()));
