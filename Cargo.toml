@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
+    # Shared utilities
+    "mef-common",
+
     # NEW: Quantum Resonant Extensions (ADD-ONLY)
     "mef-quantum-ops",
     "mef-ghost-network",
@@ -56,6 +59,9 @@ quinn = "0.11"  # QUIC protocol
 # NEW: Steganography
 steganography = "0.5"
 image = "0.25"
+
+# Shared utilities
+mef-common = { path = "mef-common" }
 
 # Infinity Ledger modules (as path dependencies)
 mef-core = { path = "resources_dev/infinityledger/mef-core" }
