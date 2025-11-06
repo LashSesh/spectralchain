@@ -117,6 +117,7 @@ impl MaskingOperator {
     }
 
     /// Invert permutation
+    #[allow(dead_code)]
     fn invert_permutation(&self, perm: &[usize]) -> Vec<usize> {
         let mut inv = vec![0; perm.len()];
         for (i, &p) in perm.iter().enumerate() {

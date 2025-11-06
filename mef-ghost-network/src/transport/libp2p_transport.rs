@@ -25,7 +25,7 @@ use libp2p::{
 };
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
 
 /// Maximum size for receive channel
@@ -92,8 +92,8 @@ pub struct Libp2pTransport {
     /// Gossipsub topic
     topic: gossipsub::IdentTopic,
 
-    /// Packet receive channel
-    rx_channel: Arc<RwLock<mpsc::UnboundedReceiver<(super::PeerId, GhostPacket)>>>,
+    /// Packet receive channel (using tokio::Mutex for Send-safe async)
+    rx_channel: Arc<Mutex<mpsc::UnboundedReceiver<(super::PeerId, GhostPacket)>>>,
 
     /// Packet send channel (to swarm event loop)
     tx_to_swarm: mpsc::UnboundedSender<SwarmCommand>,
@@ -213,7 +213,7 @@ impl Libp2pTransport {
             local_peer_id,
             libp2p_peer_id,
             topic,
-            rx_channel: Arc::new(RwLock::new(rx_packets)),
+            rx_channel: Arc::new(Mutex::new(rx_packets)),
             tx_to_swarm,
             running,
         })
@@ -463,8 +463,8 @@ impl Transport for Libp2pTransport {
     async fn receive(&mut self) -> Result<(super::PeerId, GhostPacket)> {
         debug!("Waiting to receive packet");
 
-        // Receive from channel
-        let mut rx = self.rx_channel.write().unwrap();
+        // Receive from channel (using tokio::Mutex for Send-safe async)
+        let mut rx = self.rx_channel.lock().await;
 
         match rx.recv().await {
             Some((peer, packet)) => {

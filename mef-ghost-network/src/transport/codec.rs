@@ -98,7 +98,7 @@ impl PacketCodec {
     ///
     /// # Returns
     /// * Estimated size in bytes
-    pub fn estimate_size(&self, packet: &GhostPacket) -> usize {
+    pub fn estimate_size(&self, _packet: &GhostPacket) -> usize {
         // Rough estimate based on format
         match self.format {
             WireFormat::Json => {
