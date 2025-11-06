@@ -11,12 +11,14 @@
  * - Privacy-first design (no tracking)
  */
 
-use crate::packet::{NodeIdentity, ResonanceState};
+use crate::packet::{NodeIdentity, ResonanceState, GhostPacket, CarrierType};
+use crate::transport::{Transport, PeerId};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 use tracing::{error, warn, info, debug};
 use uuid::Uuid;
 
@@ -268,10 +270,13 @@ pub struct DiscoveryEngine {
 
     /// Discovery epsilon for resonance matching
     discovery_epsilon: f64,
+
+    /// Optional network transport (None = local discovery only)
+    transport: Option<Arc<Mutex<dyn Transport>>>,
 }
 
 impl DiscoveryEngine {
-    /// Create new discovery engine
+    /// Create new discovery engine (local only)
     pub fn new(node_timeout: u64, beacon_ttl: u64, discovery_epsilon: f64) -> Self {
         Self {
             beacons: Arc::new(RwLock::new(HashMap::new())),
@@ -281,10 +286,30 @@ impl DiscoveryEngine {
             node_timeout,
             beacon_ttl,
             discovery_epsilon,
+            transport: None,
         }
     }
 
-    /// Create with default settings
+    /// Create with network transport
+    pub fn with_transport(
+        node_timeout: u64,
+        beacon_ttl: u64,
+        discovery_epsilon: f64,
+        transport: Arc<Mutex<dyn Transport>>,
+    ) -> Self {
+        Self {
+            beacons: Arc::new(RwLock::new(HashMap::new())),
+            discovered_nodes: Arc::new(RwLock::new(HashMap::new())),
+            events: Arc::new(RwLock::new(HashMap::new())),
+            stats: Arc::new(RwLock::new(DiscoveryStats::default())),
+            node_timeout,
+            beacon_ttl,
+            discovery_epsilon,
+            transport: Some(transport),
+        }
+    }
+
+    /// Create with default settings (local only)
     pub fn default() -> Self {
         Self::new(
             300,  // 5 minute node timeout
@@ -294,7 +319,10 @@ impl DiscoveryEngine {
     }
 
     /// Announce presence via beacon
-    pub fn announce(&self, identity: &NodeIdentity, capabilities: Option<Vec<String>>) -> Result<Uuid> {
+    ///
+    /// If transport is configured, broadcasts beacon to network.
+    /// Otherwise, only stores locally.
+    pub async fn announce(&self, identity: &NodeIdentity, capabilities: Option<Vec<String>>) -> Result<Uuid> {
         let beacon = DiscoveryBeacon::new(
             identity.resonance,
             self.beacon_ttl,
@@ -303,16 +331,71 @@ impl DiscoveryEngine {
 
         let beacon_id = beacon.id;
 
+        // Store beacon locally
         let mut beacons = self.beacons.write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on beacons: {}", e))?;
-        beacons.insert(beacon_id, beacon);
+        beacons.insert(beacon_id, beacon.clone());
         drop(beacons); // Release lock
+
+        // If we have transport, broadcast beacon to network
+        if let Some(ref transport) = self.transport {
+            // Serialize beacon to packet payload
+            let beacon_bytes = serde_json::to_vec(&beacon)
+                .context("Failed to serialize beacon")?;
+
+            // Create Ghost packet with beacon
+            let packet = GhostPacket::new(
+                identity.resonance,
+                beacon_bytes.clone(),
+                beacon_bytes,
+                CarrierType::Raw,
+                None,
+            );
+
+            // Broadcast via transport
+            let mut t = transport.lock().await;
+            t.broadcast(packet).await
+                .context("Failed to broadcast beacon via transport")?;
+        }
 
         let mut stats = self.stats.write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         stats.beacons_sent += 1;
 
         Ok(beacon_id)
+    }
+
+    /// Poll for beacons from network transport
+    ///
+    /// Receives beacon packets from transport and processes them.
+    /// Call this periodically when using network transport.
+    pub async fn poll_beacons(&self) -> Result<usize> {
+        if let Some(ref transport) = self.transport {
+            let mut t = transport.lock().await;
+            let mut beacons_received = 0;
+
+            // Try to receive multiple beacons (non-blocking)
+            loop {
+                match tokio::time::timeout(
+                    std::time::Duration::from_millis(10), // Short timeout
+                    t.receive()
+                ).await {
+                    Ok(Ok((_peer_id, packet))) => {
+                        // Try to deserialize beacon from packet payload
+                        if let Ok(beacon) = serde_json::from_slice::<DiscoveryBeacon>(&packet.masked_payload) {
+                            if self.receive_beacon(beacon).is_ok() {
+                                beacons_received += 1;
+                            }
+                        }
+                    }
+                    _ => break, // Timeout or error - no more beacons
+                }
+            }
+
+            Ok(beacons_received)
+        } else {
+            Ok(0) // No transport, nothing to poll
+        }
     }
 
     /// Receive beacon from another node
@@ -562,14 +645,14 @@ mod tests {
         assert!(!beacon.is_valid());
     }
 
-    #[test]
-    fn test_discovery_engine() {
+    #[tokio::test]
+    async fn test_discovery_engine() {
         let engine = DiscoveryEngine::default();
 
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let identity = NodeIdentity::new(resonance, None);
 
-        let beacon_id = engine.announce(&identity, None).unwrap();
+        let beacon_id = engine.announce(&identity, None).await.unwrap();
         assert_eq!(engine.active_beacon_count(), 1);
 
         let stats = engine.get_stats();
