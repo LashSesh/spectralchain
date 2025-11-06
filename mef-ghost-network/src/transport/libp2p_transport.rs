@@ -17,8 +17,8 @@ use super::{PacketCodec, PeerManager, Transport, TransportConfig, TransportStats
 use crate::packet::GhostPacket;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use futures::StreamExt;
 use libp2p::core::{transport::Transport as Libp2pCoreTrait, upgrade};
+use libp2p::futures::StreamExt;
 use libp2p::{
     gossipsub, identify, noise, ping,
     swarm::{NetworkBehaviour, SwarmEvent},
@@ -181,8 +181,8 @@ impl Libp2pTransport {
             ping,
         };
 
-        // Build swarm
-        let swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, libp2p_peer_id).build();
+        // Build swarm using new libp2p 0.53 API
+        let swarm = Swarm::new(transport, behaviour, libp2p_peer_id, Default::default());
 
         let codec = PacketCodec::new(config.wire_format);
         let peer_manager = Arc::new(RwLock::new(PeerManager::default()));

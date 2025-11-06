@@ -1049,7 +1049,7 @@ impl GhostProtocol {
 
         let expected = hasher.finalize();
 
-        if proof == expected.as_slice() {
+        if proof == expected.as_ref() {
             Ok(())
         } else {
             anyhow::bail!("ZK proof verification failed")

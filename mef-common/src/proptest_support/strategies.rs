@@ -98,7 +98,7 @@ fn partition_sizes(total: usize, num_partitions: usize) -> impl Strategy<Value =
 /// Strategy for generating time-based scenarios
 ///
 /// Returns (start_time, events: Vec<(offset, data)>)
-pub fn time_series<T: Clone>(
+pub fn time_series<T: Clone + std::fmt::Debug>(
     event_data: impl Strategy<Value = T> + Clone,
     num_events: usize,
 ) -> impl Strategy<Value = (u64, Vec<(u64, T)>)> {
