@@ -11,7 +11,9 @@ serde_json.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 rand.workspace = true
+rand_chacha.workspace = true
 blake3.workspace = true
+uuid.workspace = true
 
 mef-quantum-ops = { path = "../mef-quantum-ops" }
 
