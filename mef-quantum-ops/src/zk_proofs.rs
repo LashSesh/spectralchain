@@ -13,7 +13,6 @@
 use crate::{QuantumOperator, QuantumOpsError, Result};
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
 
 /// Zero-Knowledge Proof
 #[derive(Debug, Clone, Serialize, Deserialize)]

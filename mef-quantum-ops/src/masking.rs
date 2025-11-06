@@ -17,7 +17,6 @@
 use crate::{QuantumOperator, Result};
 use blake3::Hasher;
 use rand::seq::SliceRandom;
-use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;

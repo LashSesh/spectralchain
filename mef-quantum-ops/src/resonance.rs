@@ -9,7 +9,7 @@
  * - Kollektiv-Resonanz für Gruppenentscheidungen
  */
 
-use crate::{QuantumOperator, QuantumOpsError, Result};
+use crate::{QuantumOperator, Result};
 use serde::{Deserialize, Serialize};
 
 /// Resonanzfenster-Parameter
