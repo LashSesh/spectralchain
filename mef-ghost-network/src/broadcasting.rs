@@ -375,11 +375,12 @@ impl BroadcastEngine {
 
             // Create decoy packet
             let packet = GhostPacket::new(
-                resonance,
-                vec![0u8; rng.gen_range(100..1000)], // Random size
-                vec![0u8; rng.gen_range(100..1000)],
-                crate::packet::CarrierType::Raw,
-                None,
+                resonance,                           // target_resonance
+                resonance,                           // sender_resonance (decoy, so same)
+                vec![0u8; rng.gen_range(100..1000)], // masked_payload
+                vec![0u8; rng.gen_range(100..1000)], // stego_carrier
+                crate::packet::CarrierType::Raw,     // carrier_type
+                None,                                // zk_proof
             );
 
             // Broadcast decoy packet

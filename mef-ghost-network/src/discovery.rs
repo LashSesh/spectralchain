@@ -453,7 +453,11 @@ impl DiscoveryEngine {
             node.update_last_seen();
             false
         } else {
-            let node = DiscoveredNode::new(node_identity, beacon_id, beacon.capabilities);
+            let node = DiscoveredNode::new(
+                node_identity.clone(),
+                beacon_id,
+                beacon.capabilities.clone(),
+            );
             discovered.insert(node.identity.id, node);
             true
         };

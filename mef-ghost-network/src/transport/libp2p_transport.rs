@@ -13,17 +13,16 @@
  * - Ping for connection health
  */
 
-use super::{PacketCodec, PeerId, PeerManager, Transport, TransportConfig, TransportStats};
+use super::{PacketCodec, PeerManager, Transport, TransportConfig, TransportStats};
 use crate::packet::GhostPacket;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use libp2p::core::{transport::Transport as Libp2pCoreTrait, upgrade};
 use libp2p::{
-    core::upgrade,
     gossipsub, identify, noise, ping,
     swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId as Libp2pPeerId, Swarm, Transport as Libp2pTransport,
+    tcp, yamux, Multiaddr, PeerId as Libp2pPeerId, Swarm,
 };
-use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::mpsc;

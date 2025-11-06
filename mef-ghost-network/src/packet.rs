@@ -252,7 +252,7 @@ impl GhostPacket {
 }
 
 /// Ghost Transaction - High-level transaction before masking/embedding
-#[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GhostTransaction {
     /// Transaction ID
     pub id: Uuid,
