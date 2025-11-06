@@ -58,8 +58,12 @@ pub struct GhostPacket {
     /// Timestamp of creation
     pub timestamp: u64,
 
-    /// Resonance state - determines who can receive this packet
+    /// Target resonance state - determines who can receive this packet
     pub resonance: ResonanceState,
+
+    /// Sender resonance state - needed for deriving masking parameters
+    /// This is included unmasked to enable symmetric key derivation
+    pub sender_resonance: ResonanceState,
 
     /// Masked payload (after M_{θ,σ} operator)
     #[serde(with = "serde_bytes")]
@@ -103,6 +107,7 @@ impl GhostPacket {
     /// Create new ghost packet
     pub fn new(
         resonance: ResonanceState,
+        sender_resonance: ResonanceState,
         masked_payload: Vec<u8>,
         stego_carrier: Vec<u8>,
         carrier_type: CarrierType,
@@ -111,13 +116,14 @@ impl GhostPacket {
         let id = Uuid::new_v4();
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map_err(|e| anyhow::anyhow!("System time error: {}", e))
+            .expect("Failed to get system time");
 
         let mut packet = Self {
             id,
-            timestamp,
+            timestamp: timestamp.as_secs(),
             resonance,
+            sender_resonance,
             masked_payload,
             stego_carrier,
             carrier_type,
@@ -139,6 +145,9 @@ impl GhostPacket {
         hasher.update(self.resonance.psi.to_le_bytes());
         hasher.update(self.resonance.rho.to_le_bytes());
         hasher.update(self.resonance.omega.to_le_bytes());
+        hasher.update(self.sender_resonance.psi.to_le_bytes());
+        hasher.update(self.sender_resonance.rho.to_le_bytes());
+        hasher.update(self.sender_resonance.omega.to_le_bytes());
         hasher.update(&self.masked_payload);
         hasher.update(&self.stego_carrier);
         hasher.update(&[self.carrier_type as u8]);
@@ -178,6 +187,7 @@ impl GhostPacket {
         16 + // UUID
         8 +  // timestamp
         24 + // resonance (3 x f64)
+        24 + // sender_resonance (3 x f64)
         self.masked_payload.len() +
         self.stego_carrier.len() +
         1 +  // carrier_type

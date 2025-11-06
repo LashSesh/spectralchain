@@ -155,7 +155,8 @@ impl GhostNetwork {
 
     /// Announce presence to the network
     pub fn announce(&self, capabilities: Option<Vec<String>>) -> Result<uuid::Uuid> {
-        let identity = self.identity.read().unwrap();
+        let identity = self.identity.read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire identity read lock: {}", e))?;
         self.discovery.announce(&*identity, capabilities)
     }
 
@@ -165,7 +166,8 @@ impl GhostNetwork {
         target_resonance: ResonanceState,
         action: Vec<u8>,
     ) -> Result<uuid::Uuid> {
-        let identity = self.identity.read().unwrap();
+        let identity = self.identity.read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire identity read lock: {}", e))?;
 
         // Step 1: Create transaction
         let tx = self.protocol.create_transaction(
@@ -174,8 +176,9 @@ impl GhostNetwork {
             action,
         )?;
 
-        // Step 2: Mask transaction
-        let params = MaskingParams::random();
+        // Step 2: Mask transaction with resonance-derived parameters
+        // This allows the receiver to derive the same params from resonance states
+        let params = MaskingParams::from_resonance(&identity.resonance, &target_resonance);
         let masked = self.protocol.mask_transaction(&tx, &params)?;
 
         // Step 3: Embed in carrier
@@ -200,7 +203,8 @@ impl GhostNetwork {
 
     /// Receive pending transactions
     pub fn receive_transactions(&self) -> Result<Vec<GhostTransaction>> {
-        let identity = self.identity.read().unwrap();
+        let identity = self.identity.read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire identity read lock: {}", e))?;
 
         // Receive packets from broadcast
         let packets = self.broadcast.receive(&*identity)?;
@@ -209,11 +213,12 @@ impl GhostNetwork {
 
         // Process each packet
         for packet in packets {
-            // For simplicity, use a shared default masking params
-            // In production, this would be derived from shared secret
-            let params = MaskingParams::from_seed(b"default_shared_secret");
-
-            if let Some(tx) = self.protocol.receive_packet(&packet, &identity.resonance, &params)? {
+            // The protocol will automatically derive masking parameters
+            // from the sender_resonance (in packet) and our resonance state
+            if let Some(tx) = self.protocol.receive_packet(
+                &packet,
+                &identity.resonance,
+            )? {
                 transactions.push(tx);
             }
         }
@@ -232,15 +237,19 @@ impl GhostNetwork {
     }
 
     /// Update node resonance state
-    pub fn update_resonance(&self, new_resonance: ResonanceState) {
-        let mut identity = self.identity.write().unwrap();
+    pub fn update_resonance(&self, new_resonance: ResonanceState) -> Result<()> {
+        let mut identity = self.identity.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire identity write lock: {}", e))?;
         identity.update_resonance(new_resonance);
+        Ok(())
     }
 
     /// Regenerate ephemeral identity (for privacy)
-    pub fn regenerate_identity(&self) {
-        let mut identity = self.identity.write().unwrap();
+    pub fn regenerate_identity(&self) -> Result<()> {
+        let mut identity = self.identity.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire identity write lock: {}", e))?;
         identity.regenerate_id();
+        Ok(())
     }
 
     /// Generate decoy traffic for privacy
@@ -266,8 +275,10 @@ impl GhostNetwork {
     }
 
     /// Get current node identity
-    pub fn get_identity(&self) -> NodeIdentity {
-        self.identity.read().unwrap().clone()
+    pub fn get_identity(&self) -> Result<NodeIdentity> {
+        let identity = self.identity.read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire identity read lock: {}", e))?;
+        Ok(identity.clone())
     }
 }
 
@@ -294,9 +305,15 @@ mod tests {
     #[test]
     fn test_ghost_network_creation() {
         let network = GhostNetwork::with_random_identity();
-        let identity = network.get_identity();
+        let identity = network.get_identity().unwrap();
 
-        assert_ne!(identity.id, uuid::Uuid::nil());
+        // Invariant: Identity should never be nil
+        assert_ne!(identity.id, uuid::Uuid::nil(), "Identity UUID must not be nil");
+
+        // Invariant: Resonance values should be finite
+        assert!(identity.resonance.psi.is_finite(), "Psi must be finite");
+        assert!(identity.resonance.rho.is_finite(), "Rho must be finite");
+        assert!(identity.resonance.omega.is_finite(), "Omega must be finite");
     }
 
     #[test]
@@ -306,10 +323,10 @@ mod tests {
 
         // Network 1 announces
         let beacon_id = network1.announce(Some(vec!["storage".to_string()])).unwrap();
-        assert_ne!(beacon_id, uuid::Uuid::nil());
+        assert_ne!(beacon_id, uuid::Uuid::nil(), "Beacon ID must not be nil");
 
         // Simulate beacon propagation to network2
-        let resonance = network1.get_identity().resonance;
+        let resonance = network1.get_identity().unwrap().resonance;
         let beacon = DiscoveryBeacon::new(resonance, 300, Some(vec!["storage".to_string()]));
         network2.discovery.receive_beacon(beacon).unwrap();
 
@@ -337,11 +354,12 @@ mod tests {
     fn test_regenerate_identity() {
         let network = GhostNetwork::with_random_identity();
 
-        let old_id = network.get_identity().id;
-        network.regenerate_identity();
-        let new_id = network.get_identity().id;
+        let old_id = network.get_identity().unwrap().id;
+        network.regenerate_identity().unwrap();
+        let new_id = network.get_identity().unwrap().id;
 
         assert_ne!(old_id, new_id);
+        assert_ne!(new_id, uuid::Uuid::nil(), "New identity must not be nil");
     }
 
     #[test]
@@ -349,10 +367,12 @@ mod tests {
         let network = GhostNetwork::with_random_identity();
 
         let new_resonance = ResonanceState::new(5.0, 5.0, 5.0);
-        network.update_resonance(new_resonance);
+        network.update_resonance(new_resonance).unwrap();
 
-        let identity = network.get_identity();
+        let identity = network.get_identity().unwrap();
         assert_eq!(identity.resonance.psi, 5.0);
+        assert_eq!(identity.resonance.rho, 5.0);
+        assert_eq!(identity.resonance.omega, 5.0);
     }
 
     #[test]

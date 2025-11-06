@@ -92,6 +92,35 @@ impl MaskingParams {
         let seed: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
         Self::from_seed(&seed)
     }
+
+    /// Derive masking parameters from resonance states
+    ///
+    /// This allows both sender and receiver to compute the same parameters
+    /// based on their shared resonance context. The derivation is deterministic
+    /// and symmetric, enabling addressless key agreement.
+    ///
+    /// # Arguments
+    /// * `sender` - Sender's resonance state
+    /// * `target` - Target resonance state
+    ///
+    /// # Returns
+    /// * Derived masking parameters that both parties can compute
+    pub fn from_resonance(sender: &ResonanceState, target: &ResonanceState) -> Self {
+        use sha2::{Digest, Sha256};
+
+        // Create deterministic seed from resonance states
+        let mut hasher = Sha256::new();
+        hasher.update(b"ghost_network_masking_v1");
+        hasher.update(sender.psi.to_le_bytes());
+        hasher.update(sender.rho.to_le_bytes());
+        hasher.update(sender.omega.to_le_bytes());
+        hasher.update(target.psi.to_le_bytes());
+        hasher.update(target.rho.to_le_bytes());
+        hasher.update(target.omega.to_le_bytes());
+
+        let seed = hasher.finalize().to_vec();
+        Self::from_seed(&seed)
+    }
 }
 
 /// Ghost Protocol - Core protocol implementation
@@ -108,6 +137,43 @@ impl GhostProtocol {
     /// Create with default configuration
     pub fn default() -> Self {
         Self::new(ProtocolConfig::default())
+    }
+
+    /// Validate timestamp safety
+    ///
+    /// Checks that a timestamp is:
+    /// 1. Not in the future (with 60s tolerance for clock skew)
+    /// 2. Not too old (within 24 hours for security)
+    /// 3. Not zero or invalid
+    ///
+    /// # Returns
+    /// * `Ok(())` if timestamp is valid
+    /// * `Err` with description if invalid
+    fn validate_timestamp(&self, timestamp: u64) -> Result<()> {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        if timestamp == 0 {
+            anyhow::bail!("Timestamp cannot be zero");
+        }
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
+            .as_secs();
+
+        // Allow 60 second clock skew tolerance
+        const CLOCK_SKEW_TOLERANCE: u64 = 60;
+        if timestamp > now + CLOCK_SKEW_TOLERANCE {
+            anyhow::bail!("Timestamp is too far in the future: {} > {}", timestamp, now);
+        }
+
+        // Reject packets older than 24 hours
+        const MAX_AGE: u64 = 24 * 3600;
+        if timestamp + MAX_AGE < now {
+            anyhow::bail!("Timestamp is too old: {} < {}", timestamp, now - MAX_AGE);
+        }
+
+        Ok(())
     }
 
     /// Step 1: Create proof-transaction
@@ -213,7 +279,7 @@ impl GhostProtocol {
     /// * `transaction` - Original transaction
     /// * `masked_data` - Masked transaction
     /// * `stego_carrier` - Steganographic carrier
-    /// * `params` - Masking parameters
+    /// * `carrier_type` - Type of carrier
     ///
     /// # Returns
     /// * Ghost packet ready for broadcast
@@ -226,6 +292,7 @@ impl GhostProtocol {
     ) -> Result<GhostPacket> {
         let packet = GhostPacket::new(
             transaction.target_resonance,
+            transaction.sender_resonance,
             masked_data,
             stego_carrier,
             carrier_type,
@@ -238,11 +305,11 @@ impl GhostProtocol {
     /// Step 5: Receive and process packet
     ///
     /// Checks resonance, extracts, unmasks, and verifies packet.
+    /// The masking parameters are automatically derived from the sender and target resonance states.
     ///
     /// # Arguments
     /// * `packet` - Received ghost packet
     /// * `node_state` - Current node's resonance state
-    /// * `masking_params` - Masking parameters for unmasking
     ///
     /// # Returns
     /// * Recovered transaction if resonance matches, None otherwise
@@ -250,8 +317,29 @@ impl GhostProtocol {
         &self,
         packet: &GhostPacket,
         node_state: &ResonanceState,
-        masking_params: &MaskingParams,
     ) -> Result<Option<GhostTransaction>> {
+        // Runtime Invariant: Validate packet timestamp safety (R-01-003)
+        self.validate_timestamp(packet.timestamp)
+            .context("Packet timestamp validation failed")?;
+
+        // Runtime Invariant: Resonance values must be finite (R-01-002)
+        if !packet.resonance.psi.is_finite() ||
+           !packet.resonance.rho.is_finite() ||
+           !packet.resonance.omega.is_finite() {
+            anyhow::bail!("Invalid packet: resonance values must be finite");
+        }
+
+        if !packet.sender_resonance.psi.is_finite() ||
+           !packet.sender_resonance.rho.is_finite() ||
+           !packet.sender_resonance.omega.is_finite() {
+            anyhow::bail!("Invalid packet: sender resonance values must be finite");
+        }
+
+        // Runtime Invariant: Payload must not be empty (R-01-002)
+        if packet.masked_payload.is_empty() {
+            anyhow::bail!("Invalid packet: masked payload cannot be empty");
+        }
+
         // Step 5a: Check resonance R_ε(ψ_node, ψ_pkt)
         if !packet.matches_resonance(node_state, self.config.resonance_epsilon) {
             // Not resonant - ignore packet
@@ -263,21 +351,30 @@ impl GhostProtocol {
             anyhow::bail!("Packet integrity check failed");
         }
 
-        // Step 5c: Extract from steganographic carrier: a' = T⁻¹(t)
+        // Step 5c: Derive masking parameters from resonance states
+        // The receiver can compute the same params as the sender using:
+        // sender_resonance (from packet) and target_resonance (node's own state)
+        let masking_params = MaskingParams::from_resonance(&packet.sender_resonance, node_state);
+
+        // Step 5d: Extract from steganographic carrier: a' = T⁻¹(t)
         let extracted = if self.config.enable_steganography {
             self.extract_from_carrier(&packet.stego_carrier, packet.carrier_type)?
         } else {
             packet.masked_payload.clone()
         };
 
-        // Step 5d: Unmask: a* = M⁻¹_{θ,σ}(a')
-        let unmasked = self.unmask_data(&extracted, masking_params)?;
+        // Step 5e: Unmask: a* = M⁻¹_{θ,σ}(a')
+        let unmasked = self.unmask_data(&extracted, &masking_params)?;
 
-        // Step 5e: Deserialize transaction
+        // Step 5f: Deserialize transaction
         let transaction = GhostTransaction::from_bytes(&unmasked)
             .context("Failed to deserialize transaction")?;
 
-        // Step 5f: Verify ZK proof if present
+        // Runtime Invariant: Validate transaction timestamp (R-01-003)
+        self.validate_timestamp(transaction.timestamp)
+            .context("Transaction timestamp validation failed")?;
+
+        // Step 5g: Verify ZK proof if present
         if let Some(ref proof) = transaction.zk_data {
             if self.config.enable_zk_proofs {
                 self.verify_zk_proof(&transaction.action, proof)?;
@@ -525,8 +622,8 @@ mod tests {
             .create_transaction(sender, target, action.clone())
             .unwrap();
 
-        // Step 2: Mask
-        let params = MaskingParams::from_seed(b"shared_secret");
+        // Step 2: Mask with resonance-derived params
+        let params = MaskingParams::from_resonance(&sender, &target);
         let masked = protocol.mask_transaction(&tx, &params).unwrap();
 
         // Step 3: Embed
@@ -534,20 +631,24 @@ mod tests {
             .embed_transaction(&masked, CarrierType::Raw)
             .unwrap();
 
-        // Step 4: Create packet
+        // Step 4: Create packet (now includes sender_resonance)
         let packet = protocol
             .create_packet(&tx, masked, carrier, CarrierType::Raw)
             .unwrap();
 
         // Step 5: Receive (matching resonance)
-        let node_state = ResonanceState::new(2.05, 2.05, 2.05); // Close to target
+        // The receiver's resonance should be close to target
+        let node_state = ResonanceState::new(2.05, 2.05, 2.05);
         let received = protocol
-            .receive_packet(&packet, &node_state, &params)
+            .receive_packet(&packet, &node_state)
             .unwrap();
 
-        assert!(received.is_some());
+        assert!(received.is_some(), "Packet should be received");
         let recovered_tx = received.unwrap();
-        assert_eq!(recovered_tx.action, action);
+        assert_eq!(recovered_tx.action, action, "Action should match original");
+
+        // Invariant: Transaction ID should be preserved
+        assert_eq!(recovered_tx.id, tx.id, "Transaction ID must be preserved");
     }
 
     #[test]
@@ -561,7 +662,7 @@ mod tests {
             .create_transaction(sender, target, b"test".to_vec())
             .unwrap();
 
-        let params = MaskingParams::from_seed(b"secret");
+        let params = MaskingParams::from_resonance(&sender, &target);
         let masked = protocol.mask_transaction(&tx, &params).unwrap();
         let carrier = masked.clone();
 
@@ -569,15 +670,15 @@ mod tests {
             .create_packet(&tx, masked, carrier, CarrierType::Raw)
             .unwrap();
 
-        // Node with very different resonance
+        // Node with very different resonance (outside epsilon window)
         let node_state = ResonanceState::new(10.0, 10.0, 10.0);
 
         let received = protocol
-            .receive_packet(&packet, &node_state, &params)
+            .receive_packet(&packet, &node_state)
             .unwrap();
 
-        // Should not receive packet
-        assert!(received.is_none());
+        // Should not receive packet due to resonance mismatch
+        assert!(received.is_none(), "Non-resonant packet should be ignored");
     }
 
     #[test]
@@ -592,5 +693,58 @@ mod tests {
 
         // Wrong action should fail
         assert!(protocol.verify_zk_proof(b"wrong action", &proof).is_err());
+    }
+
+    #[test]
+    fn test_masking_params_from_resonance() {
+        // Test that masking params are deterministically derived from resonance states
+        let sender = ResonanceState::new(1.0, 2.0, 3.0);
+        let target = ResonanceState::new(4.0, 5.0, 6.0);
+
+        let params1 = MaskingParams::from_resonance(&sender, &target);
+        let params2 = MaskingParams::from_resonance(&sender, &target);
+
+        // Same inputs should produce same params
+        assert_eq!(params1.seed, params2.seed, "Seeds should match");
+        assert_eq!(params1.phase, params2.phase, "Phases should match");
+
+        // Different inputs should produce different params
+        let different_sender = ResonanceState::new(1.1, 2.0, 3.0);
+        let params3 = MaskingParams::from_resonance(&different_sender, &target);
+        assert_ne!(params1.seed, params3.seed, "Different senders should produce different seeds");
+    }
+
+    #[test]
+    fn test_end_to_end_masking_with_resonance() {
+        // Test the complete send/receive flow with resonance-derived params
+        let protocol = GhostProtocol::default();
+
+        let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
+        let target_resonance = ResonanceState::new(2.0, 2.0, 2.0);
+        let action = b"secret message".to_vec();
+
+        // Sender creates and encrypts transaction
+        let tx = protocol
+            .create_transaction(sender_resonance, target_resonance, action.clone())
+            .unwrap();
+
+        let sender_params = MaskingParams::from_resonance(&sender_resonance, &target_resonance);
+        let masked = protocol.mask_transaction(&tx, &sender_params).unwrap();
+        let carrier = protocol.embed_transaction(&masked, CarrierType::Raw).unwrap();
+        let packet = protocol
+            .create_packet(&tx, masked, carrier, CarrierType::Raw)
+            .unwrap();
+
+        // Receiver with matching resonance
+        let receiver_resonance = ResonanceState::new(2.05, 2.05, 2.05); // Close to target
+        let received = protocol
+            .receive_packet(&packet, &receiver_resonance)
+            .unwrap();
+
+        // Should successfully decrypt and recover the message
+        assert!(received.is_some(), "Receiver should decrypt packet");
+        let recovered_tx = received.unwrap();
+        assert_eq!(recovered_tx.action, action, "Recovered action should match original");
+        assert_eq!(recovered_tx.id, tx.id, "Transaction ID should be preserved");
     }
 }
