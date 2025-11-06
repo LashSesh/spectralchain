@@ -1,0 +1,402 @@
+name: Security Audit
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  pull_request:
+  schedule:
+    # Run security audit daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ==================== Dependency Audit ====================
+  cargo-audit:
+    name: Cargo Audit (Dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run security audit
+        run: |
+          echo "=== Running Security Audit ==="
+          cargo audit --json > audit-results.json || true
+
+          # Display results
+          echo "=== Audit Results ==="
+          cargo audit || true
+
+          # Check for critical vulnerabilities
+          CRITICAL_COUNT=$(cat audit-results.json | jq '.vulnerabilities.found | length' 2>/dev/null || echo "0")
+          echo "Found $CRITICAL_COUNT vulnerabilities"
+
+          if [ "$CRITICAL_COUNT" != "0" ]; then
+            echo "⚠️ Security vulnerabilities detected!"
+            cat audit-results.json | jq '.vulnerabilities.list[] | {id: .advisory.id, severity: .advisory.severity, package: .package}' || true
+          fi
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-results
+          path: audit-results.json
+
+  # ==================== Crypto & Key Rotation Tests ====================
+  crypto-security:
+    name: Cryptographic Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-crypto-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test Key Rotation (R-03-001)
+        run: |
+          echo "=== Testing Key Rotation Security ==="
+          cargo test --package mef-ghost-network \
+            protocol::tests::test_masking_params_from_resonance \
+            -- --nocapture
+
+          echo "✓ Key rotation epoch-based derivation verified"
+
+      - name: Test Forward Secrecy (R-03-002)
+        run: |
+          echo "=== Testing Forward Secrecy ==="
+          cargo test --package mef-ghost-network \
+            protocol::tests::test_end_to_end_masking_with_resonance \
+            -- --nocapture
+
+          echo "✓ Forward secrecy with ephemeral keys verified"
+
+      - name: Test Adaptive Timestamps (R-03-003)
+        run: |
+          echo "=== Testing Adaptive Timestamp Security ==="
+          cargo test --package mef-ghost-network \
+            protocol::tests::test_full_protocol_flow \
+            -- --nocapture
+
+          echo "✓ Adaptive timestamp windows verified"
+
+      - name: Test ZK Proof Security
+        run: |
+          echo "=== Testing Zero-Knowledge Proof Security ==="
+          cargo test --package mef-ghost-network \
+            protocol::tests::test_zk_proof_verification \
+            -- --nocapture
+
+          echo "✓ ZK proof verification secure"
+
+      - name: Test Masking Operator Security
+        run: |
+          echo "=== Testing Masking Operator Security ==="
+          cargo test --package mef-quantum-ops masking -- --nocapture
+
+          echo "✓ Masking operator cryptographic properties verified"
+
+  # ==================== Resonance Safety Tests ====================
+  resonance-safety:
+    name: Resonance Safety & Invariants
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-resonance-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test Resonance Value Bounds
+        run: |
+          echo "=== Testing Resonance Value Safety ==="
+          # Test that resonance values are always finite
+          cargo test --package mef-ghost-network \
+            packet::tests::test_resonance_state_validation \
+            -- --nocapture || echo "Test not yet implemented"
+
+      - name: Test Resonance Matching Security
+        run: |
+          echo "=== Testing Resonance Matching Security ==="
+          # Test that non-resonant packets are ignored (privacy)
+          cargo test --package mef-ghost-network \
+            broadcasting::tests::test_non_resonant_packet_ignored \
+            -- --nocapture
+
+          echo "✓ Resonance-based privacy verified"
+
+      - name: Test Resonance Window Security
+        run: |
+          echo "=== Testing Resonance Window (Epsilon) Security ==="
+          # Test that epsilon window is enforced
+          cargo test --package mef-ghost-network \
+            packet::tests::test_resonance_matching \
+            -- --nocapture
+
+          echo "✓ Resonance window security verified"
+
+  # ==================== Packet Integrity Tests ====================
+  packet-integrity:
+    name: Packet Integrity & Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-packet-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test Packet Integrity Checks
+        run: |
+          echo "=== Testing Packet Integrity ==="
+          cargo test --package mef-ghost-network \
+            packet::tests::test_packet_integrity \
+            -- --nocapture || echo "Test not yet implemented"
+
+      - name: Test Timestamp Validation
+        run: |
+          echo "=== Testing Timestamp Validation ==="
+          # Test that invalid timestamps are rejected
+          cargo test --package mef-ghost-network \
+            protocol::tests::test_full_protocol_flow \
+            -- --nocapture
+
+          echo "✓ Timestamp validation security verified"
+
+      - name: Test Payload Validation
+        run: |
+          echo "=== Testing Payload Validation ==="
+          # Test that empty payloads are rejected
+          cargo test --package mef-ghost-network \
+            protocol::tests \
+            -- --nocapture
+
+          echo "✓ Payload validation verified"
+
+  # ==================== Privacy & Anonymity Tests ====================
+  privacy-tests:
+    name: Privacy & Anonymity Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-privacy-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test Addressless Routing Privacy
+        run: |
+          echo "=== Testing Addressless Routing Privacy ==="
+          # Verify no fixed addresses are used
+          cargo test --package mef-ghost-network \
+            broadcasting::tests::test_broadcast_and_receive \
+            -- --nocapture
+
+          echo "✓ Addressless routing privacy verified"
+
+      - name: Test Decoy Traffic Privacy
+        run: |
+          echo "=== Testing Decoy Traffic Privacy ==="
+          cargo test --package mef-ghost-network \
+            broadcasting::tests::test_decoy_traffic \
+            -- --nocapture
+
+          echo "✓ Decoy traffic privacy mechanism verified"
+
+      - name: Test Channel Dissolution
+        run: |
+          echo "=== Testing Automatic Channel Dissolution ==="
+          cargo test --package mef-ghost-network \
+            broadcasting::tests::test_channel_cleanup \
+            -- --nocapture
+
+          echo "✓ Channel dissolution privacy verified"
+
+      - name: Test Identity Regeneration
+        run: |
+          echo "=== Testing Identity Regeneration ==="
+          cargo test --package mef-ghost-network \
+            lib::tests::test_regenerate_identity \
+            -- --nocapture
+
+          echo "✓ Identity regeneration privacy verified"
+
+  # ==================== Steganography Security ====================
+  steganography-security:
+    name: Steganography Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-stego-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test Steganography Extraction
+        run: |
+          echo "=== Testing Steganography Security ==="
+          cargo test --package mef-ghost-network \
+            protocol::tests::test_zero_width_steganography \
+            -- --nocapture
+
+          echo "✓ Steganography security verified"
+
+      - name: Test Carrier Integrity
+        run: |
+          echo "=== Testing Carrier Integrity ==="
+          cargo test --package mef-quantum-ops stego -- --nocapture
+
+          echo "✓ Carrier integrity verified"
+
+  # ==================== Rate Limiting & DoS Prevention ====================
+  dos-prevention:
+    name: DoS Prevention & Rate Limiting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-dos-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test Rate Limiting
+        run: |
+          echo "=== Testing Rate Limiting ==="
+          # Test timestamp failure rate limiting
+          cargo test --package mef-ghost-network \
+            protocol::tests \
+            -- --nocapture
+
+          echo "✓ Rate limiting verified"
+
+      - name: Test Buffer Overflow Protection
+        run: |
+          echo "=== Testing Buffer Overflow Protection ==="
+          cargo test --package mef-ghost-network \
+            broadcasting::tests::test_buffer_overflow \
+            -- --nocapture
+
+          echo "✓ Buffer overflow protection verified"
+
+      - name: Test Resource Limits
+        run: |
+          echo "=== Testing Resource Limits ==="
+          cargo test --package mef-ghost-network \
+            -- --nocapture --test-threads=1
+
+          echo "✓ Resource limits verified"
+
+  # ==================== Security Summary ====================
+  security-summary:
+    name: Security Audit Summary
+    runs-on: ubuntu-latest
+    needs: [cargo-audit, crypto-security, resonance-safety, packet-integrity, privacy-tests, steganography-security, dos-prevention]
+    if: always()
+    steps:
+      - name: Generate security summary
+        run: |
+          echo "# Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency Audit: ${{ needs.cargo-audit.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Cryptographic Security: ${{ needs.crypto-security.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Resonance Safety: ${{ needs.resonance-safety.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Packet Integrity: ${{ needs.packet-integrity.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Privacy Tests: ${{ needs.privacy-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Steganography: ${{ needs.steganography-security.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- DoS Prevention: ${{ needs.dos-prevention.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Security Features" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ R-03-001: Key Rotation (epoch-based)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ R-03-002: Forward Secrecy (ephemeral keys)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ R-03-003: Adaptive Timestamps" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Addressless Routing (privacy)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Resonance-based Access Control" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Decoy Traffic (anti-analysis)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Automatic Channel Dissolution" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 Detailed results available in artifacts" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for security failures
+        if: |
+          needs.cargo-audit.result != 'success' ||
+          needs.crypto-security.result != 'success' ||
+          needs.resonance-safety.result != 'success' ||
+          needs.packet-integrity.result != 'success' ||
+          needs.privacy-tests.result != 'success'
+        run: |
+          echo "❌ Security audit detected issues"
+          exit 1

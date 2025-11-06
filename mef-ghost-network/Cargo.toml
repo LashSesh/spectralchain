@@ -29,3 +29,23 @@ bincode.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+criterion.workspace = true
+
+[lib]
+name = "mef_ghost_network"
+path = "src/lib.rs"
+
+[[test]]
+name = "integration_e2e"
+path = "tests/integration_e2e.rs"
+harness = true
+
+[[test]]
+name = "integration_multi_node"
+path = "tests/integration_multi_node.rs"
+harness = true
+
+[[bench]]
+name = "ghost_protocol_bench"
+path = "benches/ghost_protocol_bench.rs"
+harness = false
