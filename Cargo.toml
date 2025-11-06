@@ -55,6 +55,9 @@ zeroize = { version = "1.7", features = ["derive"] }
 # NEW: Networking dependencies
 libp2p = { version = "0.53", features = ["tokio", "tcp", "noise", "yamux", "gossipsub", "kad"] }
 quinn = "0.11"  # QUIC protocol
+async-trait = "0.1"
+hex = "0.4"
+bincode = "1.3"
 
 # NEW: Steganography
 steganography = "0.5"

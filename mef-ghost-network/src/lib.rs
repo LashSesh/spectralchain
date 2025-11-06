@@ -88,6 +88,9 @@ pub mod protocol;
 pub mod broadcasting;
 pub mod discovery;
 
+// Network transport layer (Phase 1 implemented)
+pub mod transport;
+
 // Re-exports for convenience
 pub use packet::{
     CarrierType, GhostPacket, GhostTransaction, NodeIdentity, ResonanceState,
@@ -96,6 +99,9 @@ pub use protocol::{GhostProtocol, MaskingParams, ProtocolConfig};
 pub use broadcasting::{BroadcastChannel, BroadcastEngine, BroadcastStats};
 pub use discovery::{
     DiscoveredNode, DiscoveryBeacon, DiscoveryEngine, DiscoveryEvent, DiscoveryStats, EventType,
+};
+pub use transport::{
+    Transport, TransportConfig, Libp2pTransport, PeerId, PacketCodec, PeerInfo, PeerManager,
 };
 
 use anyhow::Result;
