@@ -1,0 +1,463 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SpectralChain E2E Test Definition",
+  "description": "Schema for defining end-to-end and chaos engineering tests for SpectralChain",
+  "type": "object",
+  "required": ["test_id", "category", "name", "objective", "setup", "execution", "validation", "cleanup"],
+  "properties": {
+    "test_id": {
+      "type": "string",
+      "pattern": "^(PROD|EDGE|CHAOS)-[0-9]{3}$",
+      "description": "Unique test identifier (PROD-001, EDGE-001, CHAOS-001)"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["production", "edge-case", "chaos-engineering"],
+      "description": "Test category"
+    },
+    "subcategory": {
+      "type": "string",
+      "enum": [
+        "ghost-network",
+        "quantum-routing",
+        "fork-healing",
+        "ephemeral-services",
+        "privacy",
+        "failover",
+        "partitioning",
+        "adversarial",
+        "decoy",
+        "scaling",
+        "performance"
+      ],
+      "description": "Test subcategory"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable test name"
+    },
+    "objective": {
+      "type": "string",
+      "description": "What this test aims to verify or demonstrate"
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Required conditions before test can run"
+    },
+    "setup": {
+      "type": "object",
+      "required": ["description", "steps", "network_topology"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Overview of test setup"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action", "parameters"],
+            "properties": {
+              "action": {
+                "type": "string",
+                "description": "Setup action to perform"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "Parameters for the setup action"
+              }
+            }
+          }
+        },
+        "network_topology": {
+          "type": "object",
+          "required": ["node_count", "topology_type"],
+          "properties": {
+            "node_count": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of nodes in the test network"
+            },
+            "topology_type": {
+              "type": "string",
+              "enum": ["mesh", "ring", "star", "random", "clustered", "partitioned"],
+              "description": "Network topology type"
+            },
+            "partitions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "items": {"type": "integer"}
+                  },
+                  "isolation_level": {
+                    "type": "string",
+                    "enum": ["full", "partial", "intermittent"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "duration_estimate": {
+          "type": "string",
+          "description": "Estimated setup time"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["description", "input", "actions"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "What happens during test execution"
+        },
+        "input": {
+          "type": "object",
+          "description": "Test inputs and parameters"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["step", "description", "timing"],
+            "properties": {
+              "step": {
+                "type": "integer",
+                "description": "Step number"
+              },
+              "description": {
+                "type": "string",
+                "description": "What this step does"
+              },
+              "node_actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "node_id": {
+                      "type": "integer"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "parameters": {
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              "timing": {
+                "type": "object",
+                "properties": {
+                  "delay_before": {
+                    "type": "string",
+                    "description": "Delay before executing this step"
+                  },
+                  "timeout": {
+                    "type": "string",
+                    "description": "Maximum time for step completion"
+                  }
+                }
+              },
+              "fault_injection": {
+                "type": "object",
+                "description": "Chaos engineering fault injection",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["network_delay", "packet_loss", "node_crash", "byzantine_behavior", "resource_exhaustion", "clock_skew"]
+                  },
+                  "parameters": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "duration_estimate": {
+          "type": "string",
+          "description": "Estimated execution time"
+        }
+      }
+    },
+    "expected_behavior": {
+      "type": "object",
+      "required": ["description", "invariants"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Expected system behavior"
+        },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["property", "condition"],
+            "properties": {
+              "property": {
+                "type": "string",
+                "description": "Property that must hold"
+              },
+              "condition": {
+                "type": "string",
+                "description": "Condition expression"
+              },
+              "violation_impact": {
+                "type": "string",
+                "enum": ["critical", "major", "minor"],
+                "description": "Impact if this invariant is violated"
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Expected metric ranges",
+          "properties": {
+            "latency_p50_ms": {
+              "type": "object",
+              "properties": {
+                "min": {"type": "number"},
+                "max": {"type": "number"}
+              }
+            },
+            "latency_p99_ms": {
+              "type": "object",
+              "properties": {
+                "min": {"type": "number"},
+                "max": {"type": "number"}
+              }
+            },
+            "throughput_tps": {
+              "type": "object",
+              "properties": {
+                "min": {"type": "number"},
+                "max": {"type": "number"}
+              }
+            },
+            "success_rate": {
+              "type": "object",
+              "properties": {
+                "min": {"type": "number"},
+                "max": {"type": "number"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["success_criteria", "failure_criteria"],
+      "properties": {
+        "success_criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["criterion", "validation_method"],
+            "properties": {
+              "criterion": {
+                "type": "string",
+                "description": "What defines success"
+              },
+              "validation_method": {
+                "type": "string",
+                "enum": ["assertion", "metric_check", "log_analysis", "state_comparison", "property_test"],
+                "description": "How to validate this criterion"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "Validation parameters"
+              }
+            }
+          }
+        },
+        "failure_criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["criterion", "severity"],
+            "properties": {
+              "criterion": {
+                "type": "string",
+                "description": "What defines failure"
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["critical", "major", "minor"],
+                "description": "Failure severity"
+              },
+              "recovery_action": {
+                "type": "string",
+                "description": "What to do if this failure occurs"
+              }
+            }
+          }
+        },
+        "recovery_strategy": {
+          "type": "object",
+          "properties": {
+            "automatic": {
+              "type": "boolean",
+              "description": "Whether recovery is automatic"
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Recovery steps"
+            },
+            "expected_recovery_time": {
+              "type": "string",
+              "description": "Expected time to recover"
+            }
+          }
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "required": ["steps"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Cleanup overview"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Cleanup steps"
+        },
+        "verification": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Verify cleanup was successful"
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "properties": {
+        "logs_to_collect": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metrics_to_track": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "traces_to_capture": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "snapshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timing": {
+                "type": "string"
+              },
+              "what": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["risk", "mitigation"],
+        "properties": {
+          "risk": {
+            "type": "string",
+            "description": "Potential risk"
+          },
+          "likelihood": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "mitigation": {
+            "type": "string",
+            "description": "How to mitigate this risk"
+          }
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for test categorization and filtering"
+    },
+    "estimated_duration": {
+      "type": "string",
+      "description": "Total estimated test duration"
+    },
+    "resources_required": {
+      "type": "object",
+      "properties": {
+        "cpu_cores": {
+          "type": "integer"
+        },
+        "memory_gb": {
+          "type": "number"
+        },
+        "disk_gb": {
+          "type": "number"
+        },
+        "network_bandwidth_mbps": {
+          "type": "number"
+        }
+      }
+    },
+    "related_tests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Related test IDs"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["spec", "paper", "issue", "documentation"]
+          },
+          "url": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

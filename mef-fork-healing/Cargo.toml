@@ -1,0 +1,27 @@
+[package]
+name = "mef-fork-healing"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+
+mef-quantum-ops = { path = "../mef-quantum-ops" }
+
+# Infinity Ledger (optional, for integration)
+mef-core = { workspace = true, optional = true }
+mef-hdag = { workspace = true, optional = true }
+
+[features]
+default = []
+infinity-ledger-integration = ["mef-core", "mef-hdag"]
+
+[dev-dependencies]
+proptest.workspace = true

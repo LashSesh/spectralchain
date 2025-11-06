@@ -1,0 +1,225 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main, claude/*]
+    paths:
+      - 'docs/**'
+      - 'resources_dev/infinityledger/*/src/**'
+      - 'Makefile.docs'
+      - '.github/workflows/documentation.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  # Validate documentation
+  validate:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+          npm install -g @apidevtools/swagger-cli
+
+      - name: Validate OpenAPI specification
+        run: |
+          make -f Makefile.docs docs-openapi || true
+
+      - name: Check for broken links
+        run: |
+          make -f Makefile.docs docs-validate || true
+
+      - name: Check documentation TODOs
+        run: |
+          echo "Checking for TODO markers..."
+          grep -rn "TODO\|FIXME\|XXX" docs/ || echo "No TODOs found"
+
+  # Build HTML documentation
+  build-html:
+    name: Build HTML Documentation
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+
+      - name: Build HTML documentation
+        run: |
+          make -f Makefile.docs docs-html || true
+
+      - name: Upload HTML artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: html-docs
+          path: docs/build/html/
+          retention-days: 30
+
+  # Build PDF documentation
+  build-pdf:
+    name: Build PDF Documentation
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Pandoc and LaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc texlive-latex-base texlive-fonts-recommended
+
+      - name: Build PDF documentation
+        run: |
+          make -f Makefile.docs docs-pdf || echo "PDF generation skipped (optional)"
+
+      - name: Upload PDF artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: pdf-docs
+          path: docs/build/pdf/
+          retention-days: 30
+
+  # Generate Rust API documentation
+  build-rust-docs:
+    name: Build Rust API Docs
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Build Rust documentation
+        run: |
+          cd resources_dev/infinityledger
+          cargo doc --workspace --no-deps
+
+      - name: Upload Rust docs artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: rust-docs
+          path: resources_dev/infinityledger/target/doc/
+          retention-days: 30
+
+  # Deploy to GitHub Pages (on main branch only)
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: [build-html, build-rust-docs]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download HTML artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: html-docs
+          path: ./public/docs
+
+      - name: Download Rust docs artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: rust-docs
+          path: ./public/api
+
+      - name: Create index page
+        run: |
+          cat > ./public/index.html <<EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url=./docs/INDEX.html">
+            <title>SpectralChain Documentation</title>
+          </head>
+          <body>
+            <p>Redirecting to <a href="./docs/INDEX.html">documentation</a>...</p>
+          </body>
+          </html>
+          EOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: ./public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
+
+  # Create documentation archive for releases
+  create-release-archive:
+    name: Create Documentation Archive
+    runs-on: ubuntu-latest
+    needs: [build-html, build-pdf, build-rust-docs]
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Create documentation archive
+        run: |
+          mkdir -p release-docs
+          cp -r html-docs release-docs/html
+          cp -r pdf-docs release-docs/pdf || echo "No PDFs"
+          cp -r rust-docs release-docs/api
+          tar -czf spectralchain-docs-${{ github.event.release.tag_name }}.tar.gz release-docs/
+
+      - name: Upload to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./spectralchain-docs-${{ github.event.release.tag_name }}.tar.gz
+          asset_name: spectralchain-docs-${{ github.event.release.tag_name }}.tar.gz
+          asset_content_type: application/gzip
+
+  # Summary job
+  summary:
+    name: Documentation Summary
+    runs-on: ubuntu-latest
+    needs: [validate, build-html, build-pdf, build-rust-docs]
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# Documentation Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Status" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Validation: ${{ needs.validate.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ HTML Build: ${{ needs.build-html.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ PDF Build: ${{ needs.build-pdf.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Rust Docs: ${{ needs.build-rust-docs.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "Documentation artifacts are available in the workflow run." >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,44 @@
+[package]
+name = "spectralchain-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[workspace]
+
+[[bin]]
+name = "fuzz_quantum_masking"
+path = "fuzz_targets/fuzz_quantum_masking.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_ghost_packet"
+path = "fuzz_targets/fuzz_ghost_packet.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_zk_proof"
+path = "fuzz_targets/fuzz_zk_proof.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_routing"
+path = "fuzz_targets/fuzz_routing.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_steganography"
+path = "fuzz_targets/fuzz_steganography.rs"
+test = false
+doc = false
