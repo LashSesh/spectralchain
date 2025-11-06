@@ -12,11 +12,13 @@
  */
 
 use crate::packet::{GhostPacket, NodeIdentity, ResonanceState};
+use crate::transport::{Transport, PeerId};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 
 /// Broadcast channel - ephemeral, resonance-based
 #[derive(Debug, Clone)]
@@ -112,7 +114,7 @@ pub struct BroadcastEngine {
     /// Active broadcast channels
     channels: Arc<RwLock<HashMap<uuid::Uuid, BroadcastChannel>>>,
 
-    /// Packet buffer for each channel
+    /// Packet buffer for each channel (in-memory fallback)
     buffers: Arc<RwLock<HashMap<uuid::Uuid, VecDeque<GhostPacket>>>>,
 
     /// Statistics
@@ -126,10 +128,13 @@ pub struct BroadcastEngine {
 
     /// Automatic channel cleanup interval (seconds)
     cleanup_interval: u64,
+
+    /// Optional network transport (None = in-memory only)
+    transport: Option<Arc<Mutex<dyn Transport>>>,
 }
 
 impl BroadcastEngine {
-    /// Create new broadcast engine
+    /// Create new broadcast engine (in-memory only)
     pub fn new(max_buffer_size: usize, decoy_rate: f64, cleanup_interval: u64) -> Self {
         Self {
             channels: Arc::new(RwLock::new(HashMap::new())),
@@ -138,10 +143,29 @@ impl BroadcastEngine {
             max_buffer_size,
             decoy_rate,
             cleanup_interval,
+            transport: None,
         }
     }
 
-    /// Create with default settings
+    /// Create with network transport
+    pub fn with_transport(
+        max_buffer_size: usize,
+        decoy_rate: f64,
+        cleanup_interval: u64,
+        transport: Arc<Mutex<dyn Transport>>,
+    ) -> Self {
+        Self {
+            channels: Arc::new(RwLock::new(HashMap::new())),
+            buffers: Arc::new(RwLock::new(HashMap::new())),
+            stats: Arc::new(RwLock::new(BroadcastStats::default())),
+            max_buffer_size,
+            decoy_rate,
+            cleanup_interval,
+            transport: Some(transport),
+        }
+    }
+
+    /// Create with default settings (in-memory only)
     pub fn default() -> Self {
         Self::new(
             1000,  // Max 1000 packets per channel
@@ -195,32 +219,41 @@ impl BroadcastEngine {
     ///
     /// Packet is routed to all channels with matching resonance.
     /// No addresses needed - purely resonance-based routing.
-    pub fn broadcast(&self, packet: GhostPacket) -> Result<Vec<uuid::Uuid>> {
+    ///
+    /// If transport is configured, broadcasts via network.
+    /// Otherwise, uses in-memory buffers.
+    pub async fn broadcast(&self, packet: GhostPacket) -> Result<Vec<uuid::Uuid>> {
         let channels = self.channels.read()
             .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on channels: {}", e))?;
         let mut matching_channels = Vec::new();
 
-        // Find all resonant channels
+        // Find all resonant channels (core innovation - resonance-based routing)
         for (channel_id, channel) in channels.iter() {
             if channel.is_alive() && channel.matches_packet(&packet) {
                 matching_channels.push(*channel_id);
             }
         }
-        drop(channels); // Release read lock before acquiring write lock
+        drop(channels); // Release read lock
 
-        // Add packet to matching channel buffers
-        let mut buffers = self.buffers.write()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
-        for channel_id in matching_channels.iter() {
-            if let Some(buffer) = buffers.get_mut(channel_id) {
-                // Enforce buffer size limit
-                if buffer.len() >= self.max_buffer_size {
-                    buffer.pop_front(); // Drop oldest packet
+        // If we have network transport, broadcast via network
+        if let Some(ref transport) = self.transport {
+            let mut t = transport.lock().await;
+            t.broadcast(packet.clone()).await
+                .context("Failed to broadcast packet via transport")?;
+        } else {
+            // Fallback: Add packet to matching channel buffers (in-memory only)
+            let mut buffers = self.buffers.write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
+            for channel_id in matching_channels.iter() {
+                if let Some(buffer) = buffers.get_mut(channel_id) {
+                    // Enforce buffer size limit
+                    if buffer.len() >= self.max_buffer_size {
+                        buffer.pop_front(); // Drop oldest packet
+                    }
+                    buffer.push_back(packet.clone());
                 }
-                buffer.push_back(packet.clone());
             }
         }
-        drop(buffers); // Release write lock
 
         // Update statistics
         let mut stats = self.stats.write()
@@ -233,34 +266,60 @@ impl BroadcastEngine {
     /// Receive packets for a node based on its resonance
     ///
     /// Node receives all packets from channels matching its resonance state.
-    pub fn receive(&self, node: &NodeIdentity) -> Result<Vec<GhostPacket>> {
-        let channels = self.channels.read()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on channels: {}", e))?;
+    ///
+    /// If transport is configured, receives from network and filters by resonance.
+    /// Otherwise, uses in-memory buffers.
+    pub async fn receive(&self, node: &NodeIdentity) -> Result<Vec<GhostPacket>> {
         let mut received_packets = Vec::new();
 
-        // Find matching channels
-        let matching_channel_ids: Vec<uuid::Uuid> = channels
-            .iter()
-            .filter(|(_, channel)| channel.is_alive() && channel.matches_node(node))
-            .map(|(id, _)| *id)
-            .collect();
-        drop(channels); // Release read lock
+        // If we have network transport, receive from network
+        if let Some(ref transport) = self.transport {
+            let mut t = transport.lock().await;
 
-        // Collect packets from matching channels
-        let mut buffers = self.buffers.write()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
-        for channel_id in matching_channel_ids {
-            if let Some(buffer) = buffers.get_mut(&channel_id) {
-                // Take all packets from buffer
-                while let Some(packet) = buffer.pop_front() {
-                    // Double-check resonance match with node
-                    if packet.matches_resonance(&node.resonance, 0.1) {
-                        received_packets.push(packet);
+            // Try to receive packets from network (non-blocking)
+            // We collect all available packets and filter by resonance
+            loop {
+                match tokio::time::timeout(
+                    std::time::Duration::from_millis(10), // Short timeout for non-blocking
+                    t.receive()
+                ).await {
+                    Ok(Ok((_peer_id, packet))) => {
+                        // Filter by resonance matching
+                        if packet.matches_resonance(&node.resonance, 0.1) {
+                            received_packets.push(packet);
+                        }
+                    }
+                    _ => break, // Timeout or error - no more packets
+                }
+            }
+        } else {
+            // Fallback: Use in-memory buffers
+            let channels = self.channels.read()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on channels: {}", e))?;
+
+            // Find matching channels
+            let matching_channel_ids: Vec<uuid::Uuid> = channels
+                .iter()
+                .filter(|(_, channel)| channel.is_alive() && channel.matches_node(node))
+                .map(|(id, _)| *id)
+                .collect();
+            drop(channels); // Release read lock
+
+            // Collect packets from matching channels
+            let mut buffers = self.buffers.write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
+            for channel_id in matching_channel_ids {
+                if let Some(buffer) = buffers.get_mut(&channel_id) {
+                    // Take all packets from buffer
+                    while let Some(packet) = buffer.pop_front() {
+                        // Double-check resonance match with node
+                        if packet.matches_resonance(&node.resonance, 0.1) {
+                            received_packets.push(packet);
+                        }
                     }
                 }
             }
         }
-        drop(buffers); // Release write lock
 
         // Update statistics
         let mut stats = self.stats.write()
@@ -274,7 +333,7 @@ impl BroadcastEngine {
     ///
     /// Creates fake packets to maintain constant background noise,
     /// making traffic analysis more difficult.
-    pub fn generate_decoy_traffic(&self, count: usize) -> Result<()> {
+    pub async fn generate_decoy_traffic(&self, count: usize) -> Result<()> {
         use rand::Rng;
         let mut rng = rand::thread_rng();
 
@@ -299,7 +358,7 @@ impl BroadcastEngine {
             );
 
             // Broadcast decoy packet
-            self.broadcast(packet)?;
+            self.broadcast(packet).await?;
         }
 
         let mut stats = self.stats.write()
@@ -452,8 +511,8 @@ mod tests {
         assert_eq!(engine.get_buffer_size(channel_id), Some(0));
     }
 
-    #[test]
-    fn test_broadcast_and_receive() {
+    #[tokio::test]
+    async fn test_broadcast_and_receive() {
         let engine = BroadcastEngine::default();
 
         // Create channel
@@ -469,7 +528,7 @@ mod tests {
             None,
         );
 
-        let matching_channels = engine.broadcast(packet.clone()).unwrap();
+        let matching_channels = engine.broadcast(packet.clone()).await.unwrap();
         assert_eq!(matching_channels.len(), 1);
 
         // Create node with similar resonance
@@ -479,13 +538,13 @@ mod tests {
         );
 
         // Receive packets
-        let received = engine.receive(&node).unwrap();
+        let received = engine.receive(&node).await.unwrap();
         assert_eq!(received.len(), 1);
         assert_eq!(received[0].id, packet.id);
     }
 
-    #[test]
-    fn test_non_resonant_packet_ignored() {
+    #[tokio::test]
+    async fn test_non_resonant_packet_ignored() {
         let engine = BroadcastEngine::default();
 
         // Create channel with specific resonance
@@ -501,15 +560,15 @@ mod tests {
             None,
         );
 
-        let matching_channels = engine.broadcast(packet).unwrap();
+        let matching_channels = engine.broadcast(packet).await.unwrap();
         assert_eq!(matching_channels.len(), 0); // No matching channels
     }
 
-    #[test]
-    fn test_decoy_traffic() {
+    #[tokio::test]
+    async fn test_decoy_traffic() {
         let engine = BroadcastEngine::default();
 
-        engine.generate_decoy_traffic(5).unwrap();
+        engine.generate_decoy_traffic(5).await.unwrap();
 
         let stats = engine.get_stats();
         assert_eq!(stats.decoy_packets, 5);
@@ -537,8 +596,8 @@ mod tests {
         assert_eq!(engine.active_channel_count(), 0);
     }
 
-    #[test]
-    fn test_buffer_overflow() {
+    #[tokio::test]
+    async fn test_buffer_overflow() {
         let engine = BroadcastEngine::new(10, 0.0, 60); // Max 10 packets
 
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
@@ -553,15 +612,15 @@ mod tests {
                 CarrierType::Raw,
                 None,
             );
-            engine.broadcast(packet).unwrap();
+            engine.broadcast(packet).await.unwrap();
         }
 
         // Buffer should be capped at 10
         assert_eq!(engine.get_buffer_size(channel_id), Some(10));
     }
 
-    #[test]
-    fn test_statistics() {
+    #[tokio::test]
+    async fn test_statistics() {
         let engine = BroadcastEngine::default();
 
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
@@ -575,7 +634,7 @@ mod tests {
             CarrierType::Raw,
             None,
         );
-        engine.broadcast(packet).unwrap();
+        engine.broadcast(packet).await.unwrap();
 
         let stats = engine.get_stats();
         assert_eq!(stats.packets_sent, 1);
