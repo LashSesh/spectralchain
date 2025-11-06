@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Resonance State - Tripolar (ψ, ρ, ω) from Gabriel Cells
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -137,8 +136,8 @@ impl GhostPacket {
             stego_carrier,
             carrier_type,
             zk_proof,
-            ttl: 32, // Default TTL
-            key_epoch: 0, // Will be set by protocol
+            ttl: 32,             // Default TTL
+            key_epoch: 0,        // Will be set by protocol
             ephemeral_key: None, // Will be set by protocol if forward secrecy enabled
             hash: [0u8; 32],
         };
@@ -252,7 +251,7 @@ impl GhostPacket {
 }
 
 /// Ghost Transaction - High-level transaction before masking/embedding
-#[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GhostTransaction {
     /// Transaction ID
     pub id: Uuid,
@@ -473,12 +472,7 @@ mod tests {
         let sender = ResonanceState::new(1.0, 1.0, 1.0);
         let target = ResonanceState::new(2.0, 2.0, 2.0);
 
-        let tx = GhostTransaction::new(
-            sender,
-            target,
-            b"action data".to_vec(),
-            None,
-        );
+        let tx = GhostTransaction::new(sender, target, b"action data".to_vec(), None);
 
         // Test serialization roundtrip
         let bytes = tx.to_bytes();

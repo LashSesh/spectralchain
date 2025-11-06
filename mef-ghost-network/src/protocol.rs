@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::{error, warn, info, debug};
+use tracing::{debug, error, info, warn};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // Import quantum operators from mef-quantum-ops
@@ -125,7 +125,8 @@ impl MaskingParams {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or(Duration::from_secs(0))
-            .as_secs() / Self::EPOCH_DURATION
+            .as_secs()
+            / Self::EPOCH_DURATION
     }
 
     /// Derive masking parameters from resonance states with key rotation
@@ -308,7 +309,8 @@ impl NetworkConditions {
 
         // Exponential moving average (alpha = 0.3)
         let alpha = 0.3;
-        self.average_latency = alpha * (latency_seconds as f64) + (1.0 - alpha) * self.average_latency;
+        self.average_latency =
+            alpha * (latency_seconds as f64) + (1.0 - alpha) * self.average_latency;
 
         self.last_update = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -372,7 +374,8 @@ impl GhostProtocol {
 
     /// Get current metrics
     pub fn get_metrics(&self) -> PacketMetrics {
-        self.metrics.read()
+        self.metrics
+            .read()
             .unwrap_or_else(|e| {
                 warn!("Failed to acquire metrics lock: {}", e);
                 e.into_inner()
@@ -382,18 +385,17 @@ impl GhostProtocol {
 
     /// Reset metrics
     pub fn reset_metrics(&self) {
-        let mut metrics = self.metrics.write()
-            .unwrap_or_else(|e| {
-                warn!("Failed to acquire metrics lock: {}", e);
-                e.into_inner()
-            });
+        let mut metrics = self.metrics.write().unwrap_or_else(|e| {
+            warn!("Failed to acquire metrics lock: {}", e);
+            e.into_inner()
+        });
         *metrics = PacketMetrics::default();
     }
 
     /// Hash resonance state to use as rate limiter key
     fn hash_resonance(&self, resonance: &ResonanceState) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         // Hash the resonance values as bytes
@@ -535,11 +537,10 @@ impl GhostProtocol {
 
         // R-03-003: Adaptive clock skew tolerance based on network conditions
         let clock_skew_tolerance = if self.config.adaptive_timestamps {
-            let conditions = self.network_conditions.read()
-                .unwrap_or_else(|e| {
-                    warn!("Failed to acquire network conditions lock: {}", e);
-                    e.into_inner()
-                });
+            let conditions = self.network_conditions.read().unwrap_or_else(|e| {
+                warn!("Failed to acquire network conditions lock: {}", e);
+                e.into_inner()
+            });
             conditions.get_clock_skew_tolerance()
         } else {
             60 // Default 60 seconds
@@ -555,16 +556,19 @@ impl GhostProtocol {
                 tolerance = clock_skew_tolerance,
                 "Security: Rejected packet with future timestamp"
             );
-            anyhow::bail!("Timestamp is too far in the future: {} > {}", timestamp, now);
+            anyhow::bail!(
+                "Timestamp is too far in the future: {} > {}",
+                timestamp,
+                now
+            );
         }
 
         // R-03-003: Adaptive maximum age based on network conditions
         let max_age = if self.config.adaptive_timestamps {
-            let conditions = self.network_conditions.read()
-                .unwrap_or_else(|e| {
-                    warn!("Failed to acquire network conditions lock: {}", e);
-                    e.into_inner()
-                });
+            let conditions = self.network_conditions.read().unwrap_or_else(|e| {
+                warn!("Failed to acquire network conditions lock: {}", e);
+                e.into_inner()
+            });
             conditions.get_max_age()
         } else {
             24 * 3600 // Default 24 hours
@@ -793,9 +797,10 @@ impl GhostProtocol {
         }
 
         // Runtime Invariant: Resonance values must be finite (R-01-002)
-        if !packet.resonance.psi.is_finite() ||
-           !packet.resonance.rho.is_finite() ||
-           !packet.resonance.omega.is_finite() {
+        if !packet.resonance.psi.is_finite()
+            || !packet.resonance.rho.is_finite()
+            || !packet.resonance.omega.is_finite()
+        {
             // Increment metric
             if let Ok(mut metrics) = self.metrics.write() {
                 metrics.rejected_invalid_resonance += 1;
@@ -813,9 +818,10 @@ impl GhostProtocol {
             anyhow::bail!("Invalid packet: resonance values must be finite");
         }
 
-        if !packet.sender_resonance.psi.is_finite() ||
-           !packet.sender_resonance.rho.is_finite() ||
-           !packet.sender_resonance.omega.is_finite() {
+        if !packet.sender_resonance.psi.is_finite()
+            || !packet.sender_resonance.rho.is_finite()
+            || !packet.sender_resonance.omega.is_finite()
+        {
             // Increment metric
             if let Ok(mut metrics) = self.metrics.write() {
                 metrics.rejected_invalid_resonance += 1;
@@ -940,8 +946,8 @@ impl GhostProtocol {
         };
 
         // Step 5f: Deserialize transaction
-        let transaction = GhostTransaction::from_bytes(&unmasked)
-            .context("Failed to deserialize transaction")?;
+        let transaction =
+            GhostTransaction::from_bytes(&unmasked).context("Failed to deserialize transaction")?;
 
         // Runtime Invariant: Validate transaction timestamp (R-01-003)
         if let Err(e) = self.validate_timestamp(transaction.timestamp) {
@@ -1091,8 +1097,7 @@ impl GhostProtocol {
 
     /// Extract data from zero-width characters
     fn extract_from_zero_width(&self, carrier: &[u8]) -> Result<Vec<u8>> {
-        let text = String::from_utf8(carrier.to_vec())
-            .context("Invalid UTF-8 in carrier")?;
+        let text = String::from_utf8(carrier.to_vec()).context("Invalid UTF-8 in carrier")?;
 
         let mut bits = Vec::new();
         for ch in text.chars() {
@@ -1251,9 +1256,7 @@ mod tests {
         // Step 5: Receive (matching resonance)
         // The receiver's resonance should be close to target
         let node_state = ResonanceState::new(2.05, 2.05, 2.05);
-        let received = protocol
-            .receive_packet(&packet, &node_state)
-            .unwrap();
+        let received = protocol.receive_packet(&packet, &node_state).unwrap();
 
         assert!(received.is_some(), "Packet should be received");
         let recovered_tx = received.unwrap();
@@ -1285,9 +1288,7 @@ mod tests {
         // Node with very different resonance (outside epsilon window)
         let node_state = ResonanceState::new(10.0, 10.0, 10.0);
 
-        let received = protocol
-            .receive_packet(&packet, &node_state)
-            .unwrap();
+        let received = protocol.receive_packet(&packet, &node_state).unwrap();
 
         // Should not receive packet due to resonance mismatch
         assert!(received.is_none(), "Non-resonant packet should be ignored");
@@ -1323,7 +1324,10 @@ mod tests {
         // Different inputs should produce different params
         let different_sender = ResonanceState::new(1.1, 2.0, 3.0);
         let params3 = MaskingParams::from_resonance(&different_sender, &target);
-        assert_ne!(params1.seed, params3.seed, "Different senders should produce different seeds");
+        assert_ne!(
+            params1.seed, params3.seed,
+            "Different senders should produce different seeds"
+        );
     }
 
     #[test]
@@ -1342,7 +1346,9 @@ mod tests {
 
         let sender_params = MaskingParams::from_resonance(&sender_resonance, &target_resonance);
         let masked = protocol.mask_transaction(&tx, &sender_params).unwrap();
-        let carrier = protocol.embed_transaction(&masked, CarrierType::Raw).unwrap();
+        let carrier = protocol
+            .embed_transaction(&masked, CarrierType::Raw)
+            .unwrap();
         let packet = protocol
             .create_packet(&tx, masked, carrier, CarrierType::Raw, &sender_params)
             .unwrap();
@@ -1356,7 +1362,10 @@ mod tests {
         // Should successfully decrypt and recover the message
         assert!(received.is_some(), "Receiver should decrypt packet");
         let recovered_tx = received.unwrap();
-        assert_eq!(recovered_tx.action, action, "Recovered action should match original");
+        assert_eq!(
+            recovered_tx.action, action,
+            "Recovered action should match original"
+        );
         assert_eq!(recovered_tx.id, tx.id, "Transaction ID should be preserved");
     }
 }

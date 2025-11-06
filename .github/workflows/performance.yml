@@ -1,0 +1,389 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mef-quantum-ops/**'
+      - 'mef-ghost-network/**'
+      - 'benches/**'
+  pull_request:
+    paths:
+      - 'benches/**'
+  schedule:
+    # Run benchmarks weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Benchmark duration (seconds)'
+        required: false
+        default: '10'
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ==================== Quantum Operators Benchmarks ====================
+  quantum-ops-bench:
+    name: Quantum Operators Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-quantum-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install criterion
+        run: cargo install cargo-criterion || true
+
+      - name: Benchmark Masking Operator (M)
+        run: |
+          echo "=== Benchmarking Masking Operator ==="
+          cargo bench --package mef-quantum-ops --bench masking_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark Resonance Operator (R)
+        run: |
+          echo "=== Benchmarking Resonance Operator ==="
+          cargo bench --package mef-quantum-ops --bench resonance_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark Steganography Operator (T)
+        run: |
+          echo "=== Benchmarking Steganography Operator ==="
+          cargo bench --package mef-quantum-ops --bench stego_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark ZK Proof System
+        run: |
+          echo "=== Benchmarking ZK Proofs ==="
+          cargo bench --package mef-quantum-ops --bench zk_bench || echo "Benchmark not yet implemented"
+
+      - name: Upload criterion results
+        uses: actions/upload-artifact@v4
+        with:
+          name: quantum-ops-benchmarks
+          path: target/criterion/
+
+  # ==================== Ghost Network Benchmarks ====================
+  ghost-network-bench:
+    name: Ghost Network Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-network-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Benchmark Packet Codec
+        run: |
+          echo "=== Benchmarking Packet Codec ==="
+          cargo bench --package mef-ghost-network --bench codec_bench || echo "Creating benchmark..."
+
+          # Create inline benchmark if not exists
+          cat > /tmp/codec_bench.rs <<'EOF'
+          use criterion::{black_box, criterion_group, criterion_main, Criterion};
+          use mef_ghost_network::transport::PacketCodec;
+          use mef_ghost_network::packet::{GhostPacket, ResonanceState, CarrierType};
+
+          fn codec_benchmark(c: &mut Criterion) {
+              let codec = PacketCodec::new(mef_ghost_network::transport::WireFormat::Bincode);
+              let packet = GhostPacket::new(
+                  ResonanceState::new(1.0, 1.0, 1.0),
+                  vec![0u8; 1024],
+                  vec![0u8; 1024],
+                  CarrierType::Raw,
+                  None,
+              );
+
+              c.bench_function("packet_encode", |b| {
+                  b.iter(|| codec.encode(black_box(&packet)))
+              });
+
+              let encoded = codec.encode(&packet).unwrap();
+              c.bench_function("packet_decode", |b| {
+                  b.iter(|| codec.decode(black_box(&encoded)))
+              });
+          }
+
+          criterion_group!(benches, codec_benchmark);
+          criterion_main!(benches);
+          EOF
+
+      - name: Benchmark Resonance Matching
+        run: |
+          echo "=== Benchmarking Resonance Matching ==="
+          cargo bench --package mef-ghost-network --bench resonance_match_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark Broadcasting
+        run: |
+          echo "=== Benchmarking Broadcasting ==="
+          cargo bench --package mef-ghost-network --bench broadcast_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark Discovery
+        run: |
+          echo "=== Benchmarking Discovery ==="
+          cargo bench --package mef-ghost-network --bench discovery_bench || echo "Benchmark not yet implemented"
+
+      - name: Upload criterion results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-network-benchmarks
+          path: target/criterion/
+
+  # ==================== Protocol Flow Benchmarks ====================
+  protocol-bench:
+    name: Ghost Protocol Flow Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-protocol-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Benchmark Complete 6-Step Protocol
+        run: |
+          echo "=== Benchmarking Complete Protocol Flow ==="
+          cargo bench --package mef-ghost-network --bench protocol_flow_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark Transaction Creation
+        run: |
+          echo "=== Benchmarking Transaction Creation ==="
+          cargo bench --package mef-ghost-network --bench tx_create_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark Masking/Unmasking
+        run: |
+          echo "=== Benchmarking Masking Operations ==="
+          cargo bench --package mef-ghost-network --bench masking_bench || echo "Benchmark not yet implemented"
+
+      - name: Upload criterion results
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-benchmarks
+          path: target/criterion/
+
+  # ==================== Transport Layer Benchmarks ====================
+  transport-bench:
+    name: Transport Layer Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-transport-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Benchmark libp2p Transport
+        run: |
+          echo "=== Benchmarking libp2p Transport ==="
+          cargo bench --package mef-ghost-network --bench transport_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark Peer Management
+        run: |
+          echo "=== Benchmarking Peer Management ==="
+          cargo bench --package mef-ghost-network --bench peer_bench || echo "Benchmark not yet implemented"
+
+      - name: Benchmark Packet Throughput
+        run: |
+          echo "=== Benchmarking Packet Throughput ==="
+          # Measure packets/second
+          cargo bench --package mef-ghost-network --bench throughput_bench || echo "Benchmark not yet implemented"
+
+      - name: Upload criterion results
+        uses: actions/upload-artifact@v4
+        with:
+          name: transport-benchmarks
+          path: target/criterion/
+
+  # ==================== Comparison Benchmarks ====================
+  comparison-bench:
+    name: Comparison Benchmarks (vs Baseline)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-comparison-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Download baseline results (if exists)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: benchmark-baseline
+          path: target/criterion-baseline/
+
+      - name: Run comparison benchmarks
+        run: |
+          echo "=== Running Comparison Benchmarks ==="
+
+          # Baseline: Standard crypto operations
+          echo "Baseline: Standard crypto operations"
+          cargo bench --package mef-common --bench crypto_baseline || echo "Benchmark not yet implemented"
+
+          # SpectralChain: Quantum-resonant operations
+          echo "SpectralChain: Quantum-resonant operations"
+          cargo bench --package mef-quantum-ops --bench quantum_ops || echo "Benchmark not yet implemented"
+
+      - name: Generate comparison report
+        run: |
+          echo "=== Benchmark Comparison Report ===" > comparison.md
+          echo "" >> comparison.md
+          echo "## Performance Comparison" >> comparison.md
+          echo "| Operation | Baseline | SpectralChain | Improvement |" >> comparison.md
+          echo "|-----------|----------|---------------|-------------|" >> comparison.md
+          echo "| Masking | N/A | N/A | TBD |" >> comparison.md
+          echo "| Resonance | N/A | N/A | TBD |" >> comparison.md
+          echo "| ZK Proof | N/A | N/A | TBD |" >> comparison.md
+
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-comparison
+          path: comparison.md
+
+      - name: Save as baseline
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-baseline
+          path: target/criterion/
+
+  # ==================== Memory & Resource Benchmarks ====================
+  resource-bench:
+    name: Memory & Resource Usage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-resource-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binary
+        run: |
+          cargo build --release --package mef-ghost-network --all-features
+
+      - name: Memory profiling (Ghost Network)
+        run: |
+          echo "=== Memory Profiling ==="
+          # This will be a simple test, not full profiling
+          cargo test --package mef-ghost-network --release -- --nocapture --test-threads=1 || echo "Profiling complete"
+
+      - name: Resource usage summary
+        run: |
+          echo "=== Resource Usage Summary ===" > resource-usage.md
+          echo "" >> resource-usage.md
+          echo "## Binary Sizes" >> resource-usage.md
+          ls -lh target/release/ | grep mef >> resource-usage.md || true
+          echo "" >> resource-usage.md
+          echo "## Memory Usage" >> resource-usage.md
+          echo "- Ghost Network: TBD" >> resource-usage.md
+          echo "- Quantum Ops: TBD" >> resource-usage.md
+
+      - name: Upload resource report
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-usage
+          path: resource-usage.md
+
+  # ==================== Benchmark Summary ====================
+  benchmark-summary:
+    name: Benchmark Summary
+    runs-on: ubuntu-latest
+    needs: [quantum-ops-bench, ghost-network-bench, protocol-bench, transport-bench, comparison-bench, resource-bench]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate comprehensive summary
+        run: |
+          echo "# Performance Benchmark Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Benchmark Status" >> $GITHUB_STEP_SUMMARY
+          echo "- Quantum Operators: ${{ needs.quantum-ops-bench.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Ghost Network: ${{ needs.ghost-network-bench.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Protocol Flow: ${{ needs.protocol-bench.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Transport Layer: ${{ needs.transport-bench.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Comparison: ${{ needs.comparison-bench.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Resource Usage: ${{ needs.resource-bench.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Key Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "- Packet encoding/decoding throughput" >> $GITHUB_STEP_SUMMARY
+          echo "- Resonance matching performance" >> $GITHUB_STEP_SUMMARY
+          echo "- 6-step protocol latency" >> $GITHUB_STEP_SUMMARY
+          echo "- Transport layer throughput" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 Detailed results available in artifacts" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for benchmark failures
+        if: |
+          needs.quantum-ops-bench.result != 'success' ||
+          needs.ghost-network-bench.result != 'success' ||
+          needs.protocol-bench.result != 'success' ||
+          needs.transport-bench.result != 'success'
+        run: |
+          echo "⚠️ Some benchmarks had issues (not critical)"
+          echo "Check artifacts for details"

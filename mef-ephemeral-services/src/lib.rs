@@ -28,15 +28,15 @@
     unreachable_pub
 )]
 
-pub mod service_registry;
-pub mod lifecycle;
-pub mod bubble;
 pub mod audit_trail;
+pub mod bubble;
+pub mod lifecycle;
+pub mod service_registry;
 
-pub use service_registry::{ServiceRegistry, ServiceDescriptor, ServiceType};
-pub use lifecycle::{LifecycleManager, LifecycleState, LifecycleEvent};
-pub use bubble::{ResonanceBubble, BubbleConfig, BubbleState};
-pub use audit_trail::{AuditTrail, AuditEntry, ProofCarryingAudit};
+pub use audit_trail::{AuditEntry, AuditTrail, ProofCarryingAudit};
+pub use bubble::{BubbleConfig, BubbleState, ResonanceBubble};
+pub use lifecycle::{LifecycleEvent, LifecycleManager, LifecycleState};
+pub use service_registry::{ServiceDescriptor, ServiceRegistry, ServiceType};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -170,11 +170,7 @@ mod tests {
     #[test]
     fn test_ephemeral_service_creation() {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
-        let service = EphemeralService::new(
-            ServiceType::Marketplace,
-            resonance,
-            300,
-        ).unwrap();
+        let service = EphemeralService::new(ServiceType::Marketplace, resonance, 300).unwrap();
 
         assert_eq!(service.descriptor.resonance.psi, 1.0);
         assert!(!service.is_active());
@@ -183,11 +179,7 @@ mod tests {
     #[test]
     fn test_service_lifecycle() {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
-        let service = EphemeralService::new(
-            ServiceType::Voting,
-            resonance,
-            300,
-        ).unwrap();
+        let service = EphemeralService::new(ServiceType::Voting, resonance, 300).unwrap();
 
         service.start().unwrap();
         assert!(service.is_active());
@@ -199,11 +191,7 @@ mod tests {
     #[test]
     fn test_activity_recording() {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
-        let service = EphemeralService::new(
-            ServiceType::Messaging,
-            resonance,
-            300,
-        ).unwrap();
+        let service = EphemeralService::new(ServiceType::Messaging, resonance, 300).unwrap();
 
         service.start().unwrap();
         service.record_activity("message_sent", None).unwrap();

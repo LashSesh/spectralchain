@@ -9,7 +9,7 @@
  * - Kollektiv-Resonanz für Gruppenentscheidungen
  */
 
-use crate::{QuantumOperator, QuantumOpsError, Result};
+use crate::{QuantumOperator, Result};
 use serde::{Deserialize, Serialize};
 
 /// Resonanzfenster-Parameter
@@ -246,8 +246,14 @@ mod tests {
         let narrow = ResonanceWindow::narrow();
         let wide = ResonanceWindow::wide();
 
-        assert!(!op.is_resonant(&state1, &state2, &narrow), "Should not resonate with narrow window");
-        assert!(op.is_resonant(&state1, &state2, &wide), "Should resonate with wide window");
+        assert!(
+            !op.is_resonant(&state1, &state2, &narrow),
+            "Should not resonate with narrow window"
+        );
+        assert!(
+            op.is_resonant(&state1, &state2, &wide),
+            "Should resonate with wide window"
+        );
     }
 
     #[test]
@@ -259,7 +265,10 @@ mod tests {
         // Weight omega heavily
         let window = ResonanceWindow::with_weights(0.5, [0.1, 0.1, 10.0]);
 
-        assert!(!op.is_resonant(&state1, &state2, &window), "Omega difference should break resonance");
+        assert!(
+            !op.is_resonant(&state1, &state2, &window),
+            "Omega difference should break resonance"
+        );
     }
 
     #[test]

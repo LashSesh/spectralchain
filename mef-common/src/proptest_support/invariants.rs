@@ -63,10 +63,7 @@ where
 {
     let hex = to_hex(value);
     let parsed = from_hex(&hex).expect("Failed to parse hex");
-    assert_eq!(
-        value, &parsed,
-        "Roundtrip failed: original != parsed"
-    );
+    assert_eq!(value, &parsed, "Roundtrip failed: original != parsed");
 }
 
 /// Invariant: Serialization roundtrip preserves data
@@ -84,12 +81,7 @@ where
 /// Invariant: Encryption/masking is reversible
 ///
 /// decrypt(encrypt(plaintext, key), key) == plaintext
-pub fn assert_reversible<T, E, D>(
-    plaintext: &T,
-    key: &[u8],
-    encrypt: E,
-    decrypt: D,
-)
+pub fn assert_reversible<T, E, D>(plaintext: &T, key: &[u8], encrypt: E, decrypt: D)
 where
     T: PartialEq + std::fmt::Debug,
     E: Fn(&T, &[u8]) -> Vec<u8>,
@@ -97,10 +89,7 @@ where
 {
     let ciphertext = encrypt(plaintext, key);
     let decrypted = decrypt(&ciphertext, key).expect("Decryption failed");
-    assert_eq!(
-        plaintext, &decrypted,
-        "Encryption not reversible"
-    );
+    assert_eq!(plaintext, &decrypted, "Encryption not reversible");
 }
 
 /// Invariant: Operation is commutative
@@ -132,21 +121,15 @@ where
 /// Invariant: State machine transitions are deterministic
 ///
 /// Same input state + same action -> same output state
-pub fn assert_deterministic_transition<S, A, F>(
-    initial: &S,
-    action: &A,
-    transition: F,
-) where
+pub fn assert_deterministic_transition<S, A, F>(initial: &S, action: &A, transition: F)
+where
     S: Clone + PartialEq + std::fmt::Debug,
     A: Clone,
     F: Fn(&S, &A) -> S,
 {
     let state1 = transition(initial, action);
     let state2 = transition(initial, action);
-    assert_eq!(
-        state1, state2,
-        "Transition not deterministic"
-    );
+    assert_eq!(state1, state2, "Transition not deterministic");
 }
 
 /// Invariant: Content addressing is collision-resistant

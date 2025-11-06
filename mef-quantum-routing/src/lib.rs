@@ -36,10 +36,10 @@
     unreachable_pub
 )]
 
-pub mod random_walk;
 pub mod entropy_source;
+pub mod random_walk;
 pub mod topology;
 
-pub use random_walk::{QuantumRandomWalkRouter, RoutingDecision, RoutingStats};
 pub use entropy_source::{EntropySource, QuantumEntropySource};
+pub use random_walk::{QuantumRandomWalkRouter, RoutingDecision, RoutingStats};
 pub use topology::{NetworkTopology, NodeMetrics, TopologyView};

@@ -13,7 +13,6 @@
 use crate::{QuantumOperator, QuantumOpsError, Result};
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
 
 /// Zero-Knowledge Proof
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,7 +192,9 @@ impl QuantumOperator for ZKProofOperator {
 
     fn apply(&self, input: Self::Input, _params: &Self::Params) -> Result<Self::Output> {
         match input.proof_type {
-            ZKProofType::ProofOfKnowledge => self.prove_knowledge(&input.secret, &input.public_data),
+            ZKProofType::ProofOfKnowledge => {
+                self.prove_knowledge(&input.secret, &input.public_data)
+            }
             ZKProofType::RangeProof { min, max } => {
                 let value = u64::from_le_bytes(input.secret[0..8].try_into().map_err(|_| {
                     QuantumOpsError::InvalidInput("Invalid value for range proof".to_string())

@@ -30,9 +30,9 @@
 //! ```
 
 pub mod generators;
-pub mod strategies;
 pub mod invariants;
+pub mod strategies;
 
 pub use generators::*;
-pub use strategies::*;
 pub use invariants::*;
+pub use strategies::*;

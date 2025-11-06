@@ -5,9 +5,9 @@
 
 use crate::error::{MefError, MefResult};
 use crate::time::current_timestamp;
+use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::Duration;
-use parking_lot::RwLock;
 
 // ============================================================================
 // Circuit Breaker Pattern
@@ -654,7 +654,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_auto_recover_success() -> MefResult<()> {
-        let mut attempt = 0;
+        use std::sync::{Arc, Mutex};
+        let attempt = Arc::new(Mutex::new(0));
+        let attempt_clone = attempt.clone();
 
         let result = auto_recover(
             "test_op",
@@ -664,19 +666,25 @@ mod tests {
                 max_backoff_ms: 100,
                 backoff_multiplier: 2.0,
             },
-            || async {
-                attempt += 1;
-                if attempt < 2 {
-                    Err(MefError::other("temporary failure"))
-                } else {
-                    Ok(42)
+            move || {
+                let attempt = attempt_clone.clone();
+                async move {
+                    let mut count = attempt.lock().unwrap();
+                    *count += 1;
+                    let current = *count;
+                    drop(count); // Release lock before returning
+                    if current < 2 {
+                        Err(MefError::other("temporary failure"))
+                    } else {
+                        Ok(42)
+                    }
                 }
             },
         )
         .await?;
 
         assert_eq!(result, 42);
-        assert_eq!(attempt, 2);
+        assert_eq!(*attempt.lock().unwrap(), 2);
 
         Ok(())
     }
@@ -696,9 +704,6 @@ mod tests {
         .await;
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("after 3 attempts"));
+        assert!(result.unwrap_err().to_string().contains("after 3 attempts"));
     }
 }

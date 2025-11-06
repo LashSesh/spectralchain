@@ -13,6 +13,7 @@ ndarray.workspace = true
 nalgebra.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
+rand_chacha.workspace = true
 sha2.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true

@@ -117,6 +117,7 @@ impl MaskingOperator {
     }
 
     /// Invert permutation
+    #[allow(dead_code)]
     fn invert_permutation(&self, perm: &[usize]) -> Vec<usize> {
         let mut inv = vec![0; perm.len()];
         for (i, &p) in perm.iter().enumerate() {
@@ -172,10 +173,18 @@ mod tests {
         let params = MaskingParams::random();
 
         let masked = op.mask(message, &params).unwrap();
-        assert_ne!(&masked[..], &message[..], "Masked should differ from original");
+        assert_ne!(
+            &masked[..],
+            &message[..],
+            "Masked should differ from original"
+        );
 
         let unmasked = op.unmask(&masked, &params).unwrap();
-        assert_eq!(&unmasked[..], &message[..], "Unmasking should restore original");
+        assert_eq!(
+            &unmasked[..],
+            &message[..],
+            "Unmasking should restore original"
+        );
     }
 
     #[test]
@@ -187,7 +196,10 @@ mod tests {
         let masked1 = op.mask(message, &params).unwrap();
         let masked2 = op.mask(message, &params).unwrap();
 
-        assert_eq!(masked1, masked2, "Masking should be deterministic with same params");
+        assert_eq!(
+            masked1, masked2,
+            "Masking should be deterministic with same params"
+        );
     }
 
     #[test]
@@ -200,7 +212,10 @@ mod tests {
         let masked1 = op.mask(message, &params1).unwrap();
         let masked2 = op.mask(message, &params2).unwrap();
 
-        assert_ne!(masked1, masked2, "Different params should produce different masks");
+        assert_ne!(
+            masked1, masked2,
+            "Different params should produce different masks"
+        );
     }
 
     #[test]

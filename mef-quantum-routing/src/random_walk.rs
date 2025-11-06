@@ -339,11 +339,8 @@ mod tests {
         }
 
         let entropy = DeterministicEntropy::new(42);
-        let router = QuantumRandomWalkRouter::with_entropy(
-            topology,
-            entropy,
-            RouterConfig::default(),
-        );
+        let router =
+            QuantumRandomWalkRouter::with_entropy(topology, entropy, RouterConfig::default());
 
         // Should produce same decision with same seed
         let target = ResonanceState::new(1.5, 1.5, 1.5);

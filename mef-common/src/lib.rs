@@ -13,19 +13,19 @@
 //! - `types`: Common type definitions and aliases
 //! - `resilience`: Self-healing infrastructure (circuit breakers, health checks)
 
-pub mod time;
-pub mod error;
 pub mod concurrency;
-pub mod result_ext;
-pub mod types;
+pub mod error;
 pub mod resilience;
+pub mod result_ext;
+pub mod time;
+pub mod types;
 
 // Property-based testing support (feature-gated)
 #[cfg(any(test, feature = "proptest-support"))]
 pub mod proptest_support;
 
 // Re-export commonly used items
-pub use error::{MefError, MefResult};
-pub use time::{current_timestamp, current_timestamp_millis};
 pub use concurrency::{SafeRwLock, SafeRwLockExt};
+pub use error::{MefError, MefResult};
 pub use result_ext::ResultExt;
+pub use time::{current_timestamp, current_timestamp_millis};
