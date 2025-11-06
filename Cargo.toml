@@ -60,7 +60,7 @@ hex = "0.4"
 bincode = "1.3"
 
 # NEW: Steganography
-steganography = "0.5"
+steganography = "1.0"
 image = "0.25"
 
 # Shared utilities
