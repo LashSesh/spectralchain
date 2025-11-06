@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Resonance State - Tripolar (ψ, ρ, ω) from Gabriel Cells
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

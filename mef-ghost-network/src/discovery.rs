@@ -12,14 +12,14 @@
  */
 
 use crate::packet::{CarrierType, GhostPacket, NodeIdentity, ResonanceState};
-use crate::transport::{PeerId, Transport};
+use crate::transport::Transport;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// Discovery beacon - temporary resonance announcement

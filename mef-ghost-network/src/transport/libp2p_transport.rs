@@ -17,11 +17,12 @@ use super::{PacketCodec, PeerManager, Transport, TransportConfig, TransportStats
 use crate::packet::GhostPacket;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use futures::StreamExt;
 use libp2p::core::{transport::Transport as Libp2pCoreTrait, upgrade};
 use libp2p::{
     gossipsub, identify, noise, ping,
-    swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId as Libp2pPeerId, Swarm,
+    swarm::{NetworkBehaviour, SwarmEvent},
+    tcp, yamux, Multiaddr, PeerId as Libp2pPeerId, Swarm, SwarmBuilder,
 };
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -156,7 +157,7 @@ impl Libp2pTransport {
             gossipsub::MessageAuthenticity::Signed(local_key.clone()),
             gossipsub_config,
         )
-        .context("Failed to create Gossipsub behaviour")?;
+        .map_err(|e| anyhow!("Failed to create Gossipsub behaviour: {}", e))?;
 
         // Subscribe to topic
         gossipsub
