@@ -25,8 +25,8 @@
 pub mod attractor;
 pub mod multiversum;
 
-pub use attractor::{MandorlaAttractor, AttractorConfig, CoherenceScore};
-pub use multiversum::{Multiversum, ForkCandidate, ForkResolution};
+pub use attractor::{AttractorConfig, CoherenceScore, MandorlaAttractor};
+pub use multiversum::{ForkCandidate, ForkResolution, Multiversum};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -142,7 +142,9 @@ mod tests {
             timestamp: 0,
         };
 
-        let winner = healer.resolve_fork(vec![block1.clone(), block2], field).unwrap();
+        let winner = healer
+            .resolve_fork(vec![block1.clone(), block2], field)
+            .unwrap();
         assert_eq!(winner.id, block1.id);
     }
 }

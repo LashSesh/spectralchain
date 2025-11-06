@@ -185,7 +185,8 @@ impl NetworkTopology {
                 self.cleanup_old_nodes();
             }
 
-            self.nodes.insert(node_id, NodeMetrics::new(node_id, resonance));
+            self.nodes
+                .insert(node_id, NodeMetrics::new(node_id, resonance));
         }
     }
 
@@ -229,11 +230,7 @@ impl NetworkTopology {
     }
 
     /// Find nodes within resonance window
-    pub fn find_resonant_nodes(
-        &self,
-        target: &ResonanceState,
-        epsilon: f64,
-    ) -> Vec<&NodeMetrics> {
+    pub fn find_resonant_nodes(&self, target: &ResonanceState, epsilon: f64) -> Vec<&NodeMetrics> {
         self.get_active_nodes()
             .into_iter()
             .filter(|n| n.resonance.distance_to(target) < epsilon)

@@ -8,8 +8,8 @@
 use anyhow::Result;
 use mef_ghost_network::integration::GhostNetworkNode;
 use mef_ghost_network::packet::ResonanceState;
-use mef_ghost_network::transport::TransportConfig;
 use mef_ghost_network::protocol::ProtocolConfig;
+use mef_ghost_network::transport::TransportConfig;
 use tokio::time::{sleep, timeout, Duration};
 
 #[tokio::test]
@@ -71,7 +71,8 @@ async fn test_e2e_transaction_send_receive() -> Result<()> {
         sender_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     sender.listen("/ip4/127.0.0.1/tcp/0".to_string()).await?;
 
@@ -79,8 +80,13 @@ async fn test_e2e_transaction_send_receive() -> Result<()> {
     let action = b"test transaction payload".to_vec();
     let target_resonance = receiver_resonance;
 
-    let channel_ids = sender.send_transaction(target_resonance, action.clone()).await?;
-    assert!(channel_ids.len() > 0, "Transaction should match at least one channel");
+    let channel_ids = sender
+        .send_transaction(target_resonance, action.clone())
+        .await?;
+    assert!(
+        channel_ids.len() > 0,
+        "Transaction should match at least one channel"
+    );
 
     // In a real scenario, we would create a receiver node and verify it receives the transaction
     // For now, we verify the broadcast was successful
@@ -102,11 +108,7 @@ async fn test_e2e_resonance_filtering() -> Result<()> {
     let transport_config = TransportConfig::local();
     let protocol_config = ProtocolConfig::default();
 
-    let mut node = GhostNetworkNode::new(
-        node_resonance,
-        transport_config,
-        protocol_config,
-    ).await?;
+    let mut node = GhostNetworkNode::new(node_resonance, transport_config, protocol_config).await?;
 
     node.listen("/ip4/127.0.0.1/tcp/0".to_string()).await?;
 
@@ -115,7 +117,11 @@ async fn test_e2e_resonance_filtering() -> Result<()> {
     let channel_ids = node.send_transaction(far_resonance, action).await?;
 
     // The packet should not match any channels due to resonance mismatch
-    assert_eq!(channel_ids.len(), 0, "Should have no matching channels for far resonance");
+    assert_eq!(
+        channel_ids.len(),
+        0,
+        "Should have no matching channels for far resonance"
+    );
 
     // Cleanup
     node.shutdown().await?;
@@ -139,8 +145,14 @@ async fn test_e2e_decoy_traffic() -> Result<()> {
 
     // Verify decoy traffic was generated
     let stats = node.broadcast_stats();
-    assert_eq!(stats.decoy_packets, 5, "Should have generated 5 decoy packets");
-    assert!(stats.packets_sent >= 5, "Should have sent at least 5 packets");
+    assert_eq!(
+        stats.decoy_packets, 5,
+        "Should have generated 5 decoy packets"
+    );
+    assert!(
+        stats.packets_sent >= 5,
+        "Should have sent at least 5 packets"
+    );
 
     // Cleanup
     node.shutdown().await?;
@@ -157,11 +169,8 @@ async fn test_e2e_protocol_6_steps() -> Result<()> {
     let transport_config = TransportConfig::local();
     let protocol_config = ProtocolConfig::default();
 
-    let mut node = GhostNetworkNode::new(
-        sender_resonance,
-        transport_config,
-        protocol_config,
-    ).await?;
+    let mut node =
+        GhostNetworkNode::new(sender_resonance, transport_config, protocol_config).await?;
 
     node.listen("/ip4/127.0.0.1/tcp/0".to_string()).await?;
 
@@ -176,13 +185,19 @@ async fn test_e2e_protocol_6_steps() -> Result<()> {
     let channel_ids = node.send_transaction(target_resonance, action).await?;
 
     // Verify all steps completed
-    assert!(channel_ids.len() > 0, "6-step protocol should complete successfully");
+    assert!(
+        channel_ids.len() > 0,
+        "6-step protocol should complete successfully"
+    );
 
     // Check protocol metrics
     let metrics = node.protocol_metrics();
     // packets_sent is updated in lib.rs, packets_accepted in protocol.rs receive_packet
     // For send_transaction, we only increment packets_sent via broadcast
-    assert!(metrics.packets_received >= 0, "Protocol metrics should be tracked");
+    assert!(
+        metrics.packets_received >= 0,
+        "Protocol metrics should be tracked"
+    );
 
     // Cleanup
     node.shutdown().await?;
@@ -208,7 +223,10 @@ async fn test_e2e_key_rotation() -> Result<()> {
     }
 
     let stats = node.broadcast_stats();
-    assert_eq!(stats.packets_sent, 3, "Should have sent 3 packets with key rotation");
+    assert_eq!(
+        stats.packets_sent, 3,
+        "Should have sent 3 packets with key rotation"
+    );
 
     // Cleanup
     node.shutdown().await?;
@@ -237,7 +255,10 @@ async fn test_e2e_forward_secrecy() -> Result<()> {
     }
 
     let stats = node.broadcast_stats();
-    assert_eq!(stats.packets_sent, 2, "Should have sent 2 packets with forward secrecy");
+    assert_eq!(
+        stats.packets_sent, 2,
+        "Should have sent 2 packets with forward secrecy"
+    );
 
     // Cleanup
     node.shutdown().await?;
@@ -265,7 +286,10 @@ async fn test_e2e_adaptive_timestamps() -> Result<()> {
 
     let metrics = node.protocol_metrics();
     // Metrics will track timestamp validation
-    assert!(metrics.packets_received >= 0, "Adaptive timestamps should be tracked");
+    assert!(
+        metrics.packets_received >= 0,
+        "Adaptive timestamps should be tracked"
+    );
 
     // Cleanup
     node.shutdown().await?;
@@ -287,7 +311,8 @@ async fn test_e2e_discovery_and_find_nodes() -> Result<()> {
         node1_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     node1.listen("/ip4/127.0.0.1/tcp/50001".to_string()).await?;
 

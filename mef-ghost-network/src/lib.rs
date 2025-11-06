@@ -83,10 +83,10 @@
 )]
 
 // Core modules
-pub mod packet;
-pub mod protocol;
 pub mod broadcasting;
 pub mod discovery;
+pub mod packet;
+pub mod protocol;
 
 // Network transport layer (Phase 1-2 implemented)
 pub mod transport;
@@ -95,18 +95,16 @@ pub mod transport;
 pub mod integration;
 
 // Re-exports for convenience
-pub use packet::{
-    CarrierType, GhostPacket, GhostTransaction, NodeIdentity, ResonanceState,
-};
-pub use protocol::{GhostProtocol, MaskingParams, ProtocolConfig};
 pub use broadcasting::{BroadcastChannel, BroadcastEngine, BroadcastStats};
 pub use discovery::{
     DiscoveredNode, DiscoveryBeacon, DiscoveryEngine, DiscoveryEvent, DiscoveryStats, EventType,
 };
-pub use transport::{
-    Transport, TransportConfig, Libp2pTransport, PeerId, PacketCodec, PeerInfo, PeerManager,
-};
 pub use integration::GhostNetworkNode;
+pub use packet::{CarrierType, GhostPacket, GhostTransaction, NodeIdentity, ResonanceState};
+pub use protocol::{GhostProtocol, MaskingParams, ProtocolConfig};
+pub use transport::{
+    Libp2pTransport, PacketCodec, PeerId, PeerInfo, PeerManager, Transport, TransportConfig,
+};
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -131,10 +129,7 @@ pub struct GhostNetwork {
 
 impl GhostNetwork {
     /// Create new ghost network with custom configuration
-    pub fn new(
-        protocol_config: ProtocolConfig,
-        identity: NodeIdentity,
-    ) -> Self {
+    pub fn new(protocol_config: ProtocolConfig, identity: NodeIdentity) -> Self {
         Self {
             protocol: Arc::new(GhostProtocol::new(protocol_config)),
             broadcast: Arc::new(BroadcastEngine::default()),
@@ -165,7 +160,9 @@ impl GhostNetwork {
 
     /// Announce presence to the network
     pub async fn announce(&self, capabilities: Option<Vec<String>>) -> Result<uuid::Uuid> {
-        let identity = self.identity.read()
+        let identity = self
+            .identity
+            .read()
             .map_err(|e| anyhow::anyhow!("Failed to acquire identity read lock: {}", e))?;
         self.discovery.announce(&*identity, capabilities).await
     }
@@ -176,15 +173,15 @@ impl GhostNetwork {
         target_resonance: ResonanceState,
         action: Vec<u8>,
     ) -> Result<uuid::Uuid> {
-        let identity = self.identity.read()
+        let identity = self
+            .identity
+            .read()
             .map_err(|e| anyhow::anyhow!("Failed to acquire identity read lock: {}", e))?;
 
         // Step 1: Create transaction
-        let tx = self.protocol.create_transaction(
-            identity.resonance,
-            target_resonance,
-            action,
-        )?;
+        let tx = self
+            .protocol
+            .create_transaction(identity.resonance, target_resonance, action)?;
 
         // Step 2: Mask transaction with resonance-derived parameters
         // R-03-001: Uses current epoch for key rotation
@@ -198,19 +195,12 @@ impl GhostNetwork {
         let masked = self.protocol.mask_transaction(&tx, &params)?;
 
         // Step 3: Embed in carrier
-        let carrier = self.protocol.embed_transaction(
-            &masked,
-            CarrierType::Raw,
-        )?;
+        let carrier = self.protocol.embed_transaction(&masked, CarrierType::Raw)?;
 
         // Step 4: Create packet with key epoch and ephemeral key
-        let packet = self.protocol.create_packet(
-            &tx,
-            masked,
-            carrier,
-            CarrierType::Raw,
-            &params,
-        )?;
+        let packet =
+            self.protocol
+                .create_packet(&tx, masked, carrier, CarrierType::Raw, &params)?;
 
         // Step 5: Broadcast
         self.broadcast.broadcast(packet).await?;
@@ -220,7 +210,9 @@ impl GhostNetwork {
 
     /// Receive pending transactions
     pub async fn receive_transactions(&self) -> Result<Vec<GhostTransaction>> {
-        let identity = self.identity.read()
+        let identity = self
+            .identity
+            .read()
             .map_err(|e| anyhow::anyhow!("Failed to acquire identity read lock: {}", e))?;
 
         // Receive packets from broadcast
@@ -232,10 +224,7 @@ impl GhostNetwork {
         for packet in packets {
             // The protocol will automatically derive masking parameters
             // from the sender_resonance (in packet) and our resonance state
-            if let Some(tx) = self.protocol.receive_packet(
-                &packet,
-                &identity.resonance,
-            )? {
+            if let Some(tx) = self.protocol.receive_packet(&packet, &identity.resonance)? {
                 transactions.push(tx);
             }
         }
@@ -255,7 +244,9 @@ impl GhostNetwork {
 
     /// Update node resonance state
     pub fn update_resonance(&self, new_resonance: ResonanceState) -> Result<()> {
-        let mut identity = self.identity.write()
+        let mut identity = self
+            .identity
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire identity write lock: {}", e))?;
         identity.update_resonance(new_resonance);
         Ok(())
@@ -263,7 +254,9 @@ impl GhostNetwork {
 
     /// Regenerate ephemeral identity (for privacy)
     pub fn regenerate_identity(&self) -> Result<()> {
-        let mut identity = self.identity.write()
+        let mut identity = self
+            .identity
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire identity write lock: {}", e))?;
         identity.regenerate_id();
         Ok(())
@@ -293,7 +286,9 @@ impl GhostNetwork {
 
     /// Get current node identity
     pub fn get_identity(&self) -> Result<NodeIdentity> {
-        let identity = self.identity.read()
+        let identity = self
+            .identity
+            .read()
             .map_err(|e| anyhow::anyhow!("Failed to acquire identity read lock: {}", e))?;
         Ok(identity.clone())
     }
@@ -325,7 +320,11 @@ mod tests {
         let identity = network.get_identity().unwrap();
 
         // Invariant: Identity should never be nil
-        assert_ne!(identity.id, uuid::Uuid::nil(), "Identity UUID must not be nil");
+        assert_ne!(
+            identity.id,
+            uuid::Uuid::nil(),
+            "Identity UUID must not be nil"
+        );
 
         // Invariant: Resonance values should be finite
         assert!(identity.resonance.psi.is_finite(), "Psi must be finite");
@@ -339,7 +338,10 @@ mod tests {
         let network2 = GhostNetwork::with_random_identity();
 
         // Network 1 announces
-        let beacon_id = network1.announce(Some(vec!["storage".to_string()])).await.unwrap();
+        let beacon_id = network1
+            .announce(Some(vec!["storage".to_string()]))
+            .await
+            .unwrap();
         assert_ne!(beacon_id, uuid::Uuid::nil(), "Beacon ID must not be nil");
 
         // Simulate beacon propagation to network2
@@ -426,7 +428,10 @@ mod tests {
 
         // Add some channels and nodes
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
-        network.broadcast.create_channel(resonance, 0.1, 300).unwrap();
+        network
+            .broadcast
+            .create_channel(resonance, 0.1, 300)
+            .unwrap();
 
         // Cleanup should work without errors
         assert!(network.cleanup().is_ok());

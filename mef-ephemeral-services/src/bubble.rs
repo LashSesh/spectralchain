@@ -1,9 +1,9 @@
 //! Resonance Bubble
 
+use super::ResonanceState;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use super::ResonanceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BubbleConfig {

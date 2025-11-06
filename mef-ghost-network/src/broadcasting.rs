@@ -12,7 +12,7 @@
  */
 
 use crate::packet::{GhostPacket, NodeIdentity, ResonanceState};
-use crate::transport::{Transport, PeerId};
+use crate::transport::{PeerId, Transport};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -168,9 +168,9 @@ impl BroadcastEngine {
     /// Create with default settings (in-memory only)
     pub fn default() -> Self {
         Self::new(
-            1000,  // Max 1000 packets per channel
-            10.0,  // 10 decoy packets per second
-            60,    // Cleanup every 60 seconds
+            1000, // Max 1000 packets per channel
+            10.0, // 10 decoy packets per second
+            60,   // Cleanup every 60 seconds
         )
     }
 
@@ -184,15 +184,21 @@ impl BroadcastEngine {
         let channel = BroadcastChannel::new(resonance, epsilon, ttl_seconds);
         let channel_id = channel.id;
 
-        let mut channels = self.channels.write()
+        let mut channels = self
+            .channels
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on channels: {}", e))?;
         channels.insert(channel_id, channel);
 
-        let mut buffers = self.buffers.write()
+        let mut buffers = self
+            .buffers
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
         buffers.insert(channel_id, VecDeque::new());
 
-        let mut stats = self.stats.write()
+        let mut stats = self
+            .stats
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         stats.channels_created += 1;
 
@@ -204,11 +210,15 @@ impl BroadcastEngine {
         let channel = BroadcastChannel::new_decoy(resonance);
         let channel_id = channel.id;
 
-        let mut channels = self.channels.write()
+        let mut channels = self
+            .channels
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on channels: {}", e))?;
         channels.insert(channel_id, channel);
 
-        let mut buffers = self.buffers.write()
+        let mut buffers = self
+            .buffers
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
         buffers.insert(channel_id, VecDeque::new());
 
@@ -223,7 +233,9 @@ impl BroadcastEngine {
     /// If transport is configured, broadcasts via network.
     /// Otherwise, uses in-memory buffers.
     pub async fn broadcast(&self, packet: GhostPacket) -> Result<Vec<uuid::Uuid>> {
-        let channels = self.channels.read()
+        let channels = self
+            .channels
+            .read()
             .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on channels: {}", e))?;
         let mut matching_channels = Vec::new();
 
@@ -238,11 +250,14 @@ impl BroadcastEngine {
         // If we have network transport, broadcast via network
         if let Some(ref transport) = self.transport {
             let mut t = transport.lock().await;
-            t.broadcast(packet.clone()).await
+            t.broadcast(packet.clone())
+                .await
                 .context("Failed to broadcast packet via transport")?;
         } else {
             // Fallback: Add packet to matching channel buffers (in-memory only)
-            let mut buffers = self.buffers.write()
+            let mut buffers = self
+                .buffers
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
             for channel_id in matching_channels.iter() {
                 if let Some(buffer) = buffers.get_mut(channel_id) {
@@ -256,7 +271,9 @@ impl BroadcastEngine {
         }
 
         // Update statistics
-        let mut stats = self.stats.write()
+        let mut stats = self
+            .stats
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         stats.packets_sent += 1;
 
@@ -281,8 +298,10 @@ impl BroadcastEngine {
             loop {
                 match tokio::time::timeout(
                     std::time::Duration::from_millis(10), // Short timeout for non-blocking
-                    t.receive()
-                ).await {
+                    t.receive(),
+                )
+                .await
+                {
                     Ok(Ok((_peer_id, packet))) => {
                         // Filter by resonance matching
                         if packet.matches_resonance(&node.resonance, 0.1) {
@@ -294,7 +313,9 @@ impl BroadcastEngine {
             }
         } else {
             // Fallback: Use in-memory buffers
-            let channels = self.channels.read()
+            let channels = self
+                .channels
+                .read()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on channels: {}", e))?;
 
             // Find matching channels
@@ -306,7 +327,9 @@ impl BroadcastEngine {
             drop(channels); // Release read lock
 
             // Collect packets from matching channels
-            let mut buffers = self.buffers.write()
+            let mut buffers = self
+                .buffers
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
             for channel_id in matching_channel_ids {
                 if let Some(buffer) = buffers.get_mut(&channel_id) {
@@ -322,7 +345,9 @@ impl BroadcastEngine {
         }
 
         // Update statistics
-        let mut stats = self.stats.write()
+        let mut stats = self
+            .stats
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         stats.packets_received += received_packets.len();
 
@@ -361,7 +386,9 @@ impl BroadcastEngine {
             self.broadcast(packet).await?;
         }
 
-        let mut stats = self.stats.write()
+        let mut stats = self
+            .stats
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         stats.decoy_packets += count;
 
@@ -373,9 +400,13 @@ impl BroadcastEngine {
     /// Removes channels that have exceeded their TTL.
     /// This implements "automatic channel dissolve" for privacy.
     pub fn cleanup_expired_channels(&self) -> Result<usize> {
-        let mut channels = self.channels.write()
+        let mut channels = self
+            .channels
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on channels: {}", e))?;
-        let mut buffers = self.buffers.write()
+        let mut buffers = self
+            .buffers
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on buffers: {}", e))?;
 
         let mut dissolved_count = 0;
@@ -397,7 +428,9 @@ impl BroadcastEngine {
         drop(buffers);
 
         // Update statistics
-        let mut stats = self.stats.write()
+        let mut stats = self
+            .stats
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         stats.channels_dissolved += dissolved_count;
 
@@ -407,11 +440,10 @@ impl BroadcastEngine {
     /// Get all active channels
     pub fn get_active_channels(&self) -> Vec<BroadcastChannel> {
         // Use unwrap_or_else to handle poison error by returning empty vec
-        let channels = self.channels.read()
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: RwLock poisoned in get_active_channels: {}", e);
-                e.into_inner()
-            });
+        let channels = self.channels.read().unwrap_or_else(|e| {
+            eprintln!("Warning: RwLock poisoned in get_active_channels: {}", e);
+            e.into_inner()
+        });
         channels
             .values()
             .filter(|c| c.is_alive())
@@ -422,7 +454,8 @@ impl BroadcastEngine {
     /// Get statistics
     pub fn get_stats(&self) -> BroadcastStats {
         // Use unwrap_or_else to handle poison error by returning default stats
-        self.stats.read()
+        self.stats
+            .read()
             .unwrap_or_else(|e| {
                 eprintln!("Warning: RwLock poisoned in get_stats: {}", e);
                 e.into_inner()
@@ -433,33 +466,30 @@ impl BroadcastEngine {
     /// Reset statistics
     pub fn reset_stats(&self) {
         // Use unwrap_or_else to handle poison error and continue
-        let mut stats = self.stats.write()
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: RwLock poisoned in reset_stats: {}", e);
-                e.into_inner()
-            });
+        let mut stats = self.stats.write().unwrap_or_else(|e| {
+            eprintln!("Warning: RwLock poisoned in reset_stats: {}", e);
+            e.into_inner()
+        });
         *stats = BroadcastStats::default();
     }
 
     /// Get total active channels count
     pub fn active_channel_count(&self) -> usize {
         // Use unwrap_or_else to handle poison error by returning 0
-        let channels = self.channels.read()
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: RwLock poisoned in active_channel_count: {}", e);
-                e.into_inner()
-            });
+        let channels = self.channels.read().unwrap_or_else(|e| {
+            eprintln!("Warning: RwLock poisoned in active_channel_count: {}", e);
+            e.into_inner()
+        });
         channels.values().filter(|c| c.is_alive()).count()
     }
 
     /// Get buffer size for a channel
     pub fn get_buffer_size(&self, channel_id: uuid::Uuid) -> Option<usize> {
         // Use unwrap_or_else to handle poison error by returning None
-        let buffers = self.buffers.read()
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: RwLock poisoned in get_buffer_size: {}", e);
-                e.into_inner()
-            });
+        let buffers = self.buffers.read().unwrap_or_else(|e| {
+            eprintln!("Warning: RwLock poisoned in get_buffer_size: {}", e);
+            e.into_inner()
+        });
         buffers.get(&channel_id).map(|b| b.len())
     }
 }
@@ -532,10 +562,7 @@ mod tests {
         assert_eq!(matching_channels.len(), 1);
 
         // Create node with similar resonance
-        let node = NodeIdentity::new(
-            ResonanceState::new(1.05, 1.05, 1.05),
-            None,
-        );
+        let node = NodeIdentity::new(ResonanceState::new(1.05, 1.05, 1.05), None);
 
         // Receive packets
         let received = engine.receive(&node).await.unwrap();

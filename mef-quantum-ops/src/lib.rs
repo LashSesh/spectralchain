@@ -20,8 +20,8 @@ pub mod zk_proofs;
 pub use error::{QuantumOpsError, Result};
 pub use masking::{MaskingOperator, MaskingParams};
 pub use resonance::{ResonanceOperator, ResonanceWindow};
-pub use steganography::{SteganographyOperator, CarrierType};
-pub use zk_proofs::{ZKProofOperator, ZKProof};
+pub use steganography::{CarrierType, SteganographyOperator};
+pub use zk_proofs::{ZKProof, ZKProofOperator};
 
 /// Quantenresonante Operator-Trait
 ///

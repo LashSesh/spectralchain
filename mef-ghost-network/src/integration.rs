@@ -16,7 +16,7 @@ use crate::transport::{Libp2pTransport, PeerId, Transport, TransportConfig};
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 /// Complete Ghost Network node
 ///
@@ -69,22 +69,22 @@ impl GhostNetworkNode {
         let transport = Arc::new(Mutex::new(
             Libp2pTransport::new(transport_config)
                 .await
-                .context("Failed to create libp2p transport")?
+                .context("Failed to create libp2p transport")?,
         ));
 
         // Create broadcast engine with transport
         let broadcast = Arc::new(BroadcastEngine::with_transport(
-            1000,  // max_buffer_size
-            10.0,  // decoy_rate
-            60,    // cleanup_interval
+            1000, // max_buffer_size
+            10.0, // decoy_rate
+            60,   // cleanup_interval
             transport.clone(),
         ));
 
         // Create discovery engine with transport
         let discovery = Arc::new(DiscoveryEngine::with_transport(
-            300,  // node_timeout
-            120,  // beacon_ttl
-            0.2,  // discovery_epsilon
+            300, // node_timeout
+            120, // beacon_ttl
+            0.2, // discovery_epsilon
             transport.clone(),
         ));
 
@@ -93,8 +93,7 @@ impl GhostNetworkNode {
 
         // Create main broadcast channel matching node's resonance
         let main_channel_id = broadcast.create_channel(
-            resonance,
-            0.1,  // epsilon
+            resonance, 0.1,  // epsilon
             3600, // 1 hour TTL
         )?;
 
@@ -159,7 +158,10 @@ impl GhostNetworkNode {
     }
 
     /// Find nodes by resonance
-    pub fn find_nodes(&self, target_resonance: &ResonanceState) -> Vec<crate::discovery::DiscoveredNode> {
+    pub fn find_nodes(
+        &self,
+        target_resonance: &ResonanceState,
+    ) -> Vec<crate::discovery::DiscoveredNode> {
         self.discovery.find_nodes(target_resonance)
     }
 
@@ -190,11 +192,9 @@ impl GhostNetworkNode {
         );
 
         // Step 1: Create transaction with ZK proof
-        let transaction = self.protocol.create_transaction(
-            self.identity.resonance,
-            target_resonance,
-            action,
-        )?;
+        let transaction =
+            self.protocol
+                .create_transaction(self.identity.resonance, target_resonance, action)?;
 
         debug!(
             event = "transaction_created",
@@ -204,10 +204,8 @@ impl GhostNetworkNode {
 
         // Step 2: Derive masking parameters from resonance states
         // Both sender and receiver can compute same params (addressless key agreement)
-        let mut masking_params = MaskingParams::from_resonance(
-            &self.identity.resonance,
-            &target_resonance,
-        );
+        let mut masking_params =
+            MaskingParams::from_resonance(&self.identity.resonance, &target_resonance);
 
         // Add forward secrecy (R-03-002)
         if self.protocol.get_metrics().packets_accepted > 0 {
@@ -216,15 +214,16 @@ impl GhostNetworkNode {
         }
 
         // Step 2: Mask transaction
-        let masked = self.protocol.mask_transaction(&transaction, &masking_params)?;
+        let masked = self
+            .protocol
+            .mask_transaction(&transaction, &masking_params)?;
 
         debug!(event = "transaction_masked", "Transaction masked");
 
         // Step 3: Embed in steganographic carrier
-        let carrier = self.protocol.embed_transaction(
-            &masked,
-            crate::packet::CarrierType::Raw,
-        )?;
+        let carrier = self
+            .protocol
+            .embed_transaction(&masked, crate::packet::CarrierType::Raw)?;
 
         debug!(event = "transaction_embedded", "Transaction embedded");
 
@@ -278,7 +277,10 @@ impl GhostNetworkNode {
 
         // Process each packet through Ghost Protocol
         for packet in packets {
-            match self.protocol.receive_packet(&packet, &self.identity.resonance) {
+            match self
+                .protocol
+                .receive_packet(&packet, &self.identity.resonance)
+            {
                 Ok(Some(tx)) => {
                     info!(
                         event = "transaction_received",
@@ -334,7 +336,10 @@ impl GhostNetworkNode {
 
     /// Shutdown the node gracefully
     pub async fn shutdown(&mut self) -> Result<()> {
-        info!(event = "node_shutting_down", "Shutting down Ghost Network node");
+        info!(
+            event = "node_shutting_down",
+            "Shutting down Ghost Network node"
+        );
         self.transport.lock().await.shutdown().await
     }
 }
@@ -367,9 +372,7 @@ mod tests {
             .unwrap();
 
         // Announce presence
-        let beacon_id = node.announce(Some(vec!["test".to_string()]))
-            .await
-            .unwrap();
+        let beacon_id = node.announce(Some(vec!["test".to_string()])).await.unwrap();
 
         assert!(beacon_id.to_string().len() > 0);
 

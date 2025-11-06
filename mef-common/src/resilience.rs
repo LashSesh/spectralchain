@@ -5,9 +5,9 @@
 
 use crate::error::{MefError, MefResult};
 use crate::time::current_timestamp;
+use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::Duration;
-use parking_lot::RwLock;
 
 // ============================================================================
 // Circuit Breaker Pattern
@@ -696,9 +696,6 @@ mod tests {
         .await;
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("after 3 attempts"));
+        assert!(result.unwrap_err().to_string().contains("after 3 attempts"));
     }
 }

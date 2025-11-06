@@ -24,9 +24,8 @@ use proptest::prelude::*;
 /// }
 /// ```
 pub fn arb_resonance_triplet() -> impl Strategy<Value = ResonanceTriplet> {
-    (-10.0..=10.0, -10.0..=10.0, -10.0..=10.0).prop_map(|(psi, rho, omega)| {
-        ResonanceTriplet::new(psi, rho, omega)
-    })
+    (-10.0..=10.0, -10.0..=10.0, -10.0..=10.0)
+        .prop_map(|(psi, rho, omega)| ResonanceTriplet::new(psi, rho, omega))
 }
 
 /// Generate unit-length ResonanceTriplet values

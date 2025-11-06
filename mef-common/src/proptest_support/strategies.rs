@@ -8,8 +8,7 @@ use proptest::prelude::*;
 ///
 /// Ensures theta ∈ [0, 2π] and sigma ∈ [0, 1]
 pub fn quantum_masking_params() -> impl Strategy<Value = (f64, f64)> {
-    (0.0..=std::f64::consts::TAU, 0.0..=1.0)
-        .prop_map(|(theta, sigma)| (theta, sigma))
+    (0.0..=std::f64::consts::TAU, 0.0..=1.0).prop_map(|(theta, sigma)| (theta, sigma))
 }
 
 /// Strategy for generating valid permutations of length n

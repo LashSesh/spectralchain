@@ -1,8 +1,8 @@
 //! Mandorla Attractor for Fork Resolution
 
+use super::{Block, ResonanceState};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use super::{Block, ResonanceState};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttractorConfig {

@@ -137,8 +137,8 @@ impl GhostPacket {
             stego_carrier,
             carrier_type,
             zk_proof,
-            ttl: 32, // Default TTL
-            key_epoch: 0, // Will be set by protocol
+            ttl: 32,             // Default TTL
+            key_epoch: 0,        // Will be set by protocol
             ephemeral_key: None, // Will be set by protocol if forward secrecy enabled
             hash: [0u8; 32],
         };
@@ -473,12 +473,7 @@ mod tests {
         let sender = ResonanceState::new(1.0, 1.0, 1.0);
         let target = ResonanceState::new(2.0, 2.0, 2.0);
 
-        let tx = GhostTransaction::new(
-            sender,
-            target,
-            b"action data".to_vec(),
-            None,
-        );
+        let tx = GhostTransaction::new(sender, target, b"action data".to_vec(), None);
 
         // Test serialization roundtrip
         let bytes = tx.to_bytes();

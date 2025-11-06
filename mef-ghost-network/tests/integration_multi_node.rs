@@ -8,8 +8,8 @@
 use anyhow::Result;
 use mef_ghost_network::integration::GhostNetworkNode;
 use mef_ghost_network::packet::ResonanceState;
-use mef_ghost_network::transport::TransportConfig;
 use mef_ghost_network::protocol::ProtocolConfig;
+use mef_ghost_network::transport::TransportConfig;
 use tokio::time::{sleep, timeout, Duration};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -26,7 +26,8 @@ async fn test_two_nodes_dial_and_connect() -> Result<()> {
         node1_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     node1.listen("/ip4/127.0.0.1/tcp/50010".to_string()).await?;
     let node1_addr = "/ip4/127.0.0.1/tcp/50010".to_string();
@@ -36,14 +37,18 @@ async fn test_two_nodes_dial_and_connect() -> Result<()> {
         node2_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     // Give node1 time to start listening
     sleep(Duration::from_millis(500)).await;
 
     // Node 2 connects to node 1
     let peer_id = node2.dial(node1_addr).await?;
-    assert!(peer_id.to_string().len() > 0, "Should have connected to node1");
+    assert!(
+        peer_id.to_string().len() > 0,
+        "Should have connected to node1"
+    );
 
     // Cleanup
     node1.shutdown().await?;
@@ -66,9 +71,12 @@ async fn test_two_nodes_transaction_exchange() -> Result<()> {
         receiver_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
-    receiver.listen("/ip4/127.0.0.1/tcp/50020".to_string()).await?;
+    receiver
+        .listen("/ip4/127.0.0.1/tcp/50020".to_string())
+        .await?;
     let receiver_addr = "/ip4/127.0.0.1/tcp/50020".to_string();
 
     // Create sender node
@@ -76,9 +84,12 @@ async fn test_two_nodes_transaction_exchange() -> Result<()> {
         sender_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
-    sender.listen("/ip4/127.0.0.1/tcp/50021".to_string()).await?;
+    sender
+        .listen("/ip4/127.0.0.1/tcp/50021".to_string())
+        .await?;
 
     // Connect nodes
     sleep(Duration::from_millis(500)).await;
@@ -89,7 +100,9 @@ async fn test_two_nodes_transaction_exchange() -> Result<()> {
 
     // Sender sends transaction targeting receiver's resonance
     let action = b"Hello from sender to receiver!".to_vec();
-    let channel_ids = sender.send_transaction(receiver_resonance, action.clone()).await?;
+    let channel_ids = sender
+        .send_transaction(receiver_resonance, action.clone())
+        .await?;
 
     assert!(channel_ids.len() > 0, "Transaction should match channels");
 
@@ -125,19 +138,22 @@ async fn test_three_nodes_broadcast() -> Result<()> {
         node1_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     let mut node2 = GhostNetworkNode::new(
         node2_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     let mut node3 = GhostNetworkNode::new(
         node3_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     // All nodes listen
     node1.listen("/ip4/127.0.0.1/tcp/50030".to_string()).await?;
@@ -167,8 +183,12 @@ async fn test_three_nodes_broadcast() -> Result<()> {
     let rx2 = node2.receive_transactions().await?;
     let rx3 = node3.receive_transactions().await?;
 
-    println!("Node1 received: {}, Node2 received: {}, Node3 received: {}",
-             rx1.len(), rx2.len(), rx3.len());
+    println!(
+        "Node1 received: {}, Node2 received: {}, Node3 received: {}",
+        rx1.len(),
+        rx2.len(),
+        rx3.len()
+    );
 
     // Cleanup
     node1.shutdown().await?;
@@ -192,13 +212,15 @@ async fn test_discovery_across_nodes() -> Result<()> {
         node1_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     let mut node2 = GhostNetworkNode::new(
         node2_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     // Both nodes listen
     node1.listen("/ip4/127.0.0.1/tcp/50040".to_string()).await?;
@@ -222,13 +244,20 @@ async fn test_discovery_across_nodes() -> Result<()> {
     let beacons1 = node1.poll_discovery().await?;
     let beacons2 = node2.poll_discovery().await?;
 
-    println!("Node1 received {} beacons, Node2 received {} beacons", beacons1, beacons2);
+    println!(
+        "Node1 received {} beacons, Node2 received {} beacons",
+        beacons1, beacons2
+    );
 
     // Try to find nodes
     let found_by_1 = node1.find_nodes(&node2_resonance);
     let found_by_2 = node2.find_nodes(&node1_resonance);
 
-    println!("Node1 found {} nodes, Node2 found {} nodes", found_by_1.len(), found_by_2.len());
+    println!(
+        "Node1 found {} nodes, Node2 found {} nodes",
+        found_by_1.len(),
+        found_by_2.len()
+    );
 
     // Cleanup
     node1.shutdown().await?;
@@ -251,13 +280,15 @@ async fn test_resonance_isolation() -> Result<()> {
         node1_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     let mut node2 = GhostNetworkNode::new(
         node2_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     // Both nodes listen
     node1.listen("/ip4/127.0.0.1/tcp/50050".to_string()).await?;
@@ -281,7 +312,10 @@ async fn test_resonance_isolation() -> Result<()> {
     let received = node2.receive_transactions().await?;
 
     // Due to resonance isolation, node2 should not receive the packet
-    println!("Node2 received {} transactions (expected 0 due to resonance mismatch)", received.len());
+    println!(
+        "Node2 received {} transactions (expected 0 due to resonance mismatch)",
+        received.len()
+    );
 
     // Cleanup
     node1.shutdown().await?;
@@ -313,7 +347,8 @@ async fn test_five_nodes_mesh_network() -> Result<()> {
             *resonance,
             transport_config.clone(),
             protocol_config.clone(),
-        ).await?;
+        )
+        .await?;
 
         let addr = format!("/ip4/127.0.0.1/tcp/{}", 50060 + i);
         node.listen(addr.clone()).await?;
@@ -371,13 +406,15 @@ async fn test_concurrent_transactions() -> Result<()> {
         node1_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     let mut node2 = GhostNetworkNode::new(
         node2_resonance,
         transport_config.clone(),
         protocol_config.clone(),
-    ).await?;
+    )
+    .await?;
 
     // Both nodes listen
     node1.listen("/ip4/127.0.0.1/tcp/50070".to_string()).await?;
@@ -407,7 +444,10 @@ async fn test_concurrent_transactions() -> Result<()> {
     // Check stats
     let stats1 = node1.broadcast_stats();
     println!("Node1 sent {} packets", stats1.packets_sent);
-    assert!(stats1.packets_sent >= 5, "Should have sent at least 5 packets");
+    assert!(
+        stats1.packets_sent >= 5,
+        "Should have sent at least 5 packets"
+    );
 
     // Cleanup
     node1.shutdown().await?;

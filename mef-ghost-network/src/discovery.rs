@@ -11,15 +11,15 @@
  * - Privacy-first design (no tracking)
  */
 
-use crate::packet::{NodeIdentity, ResonanceState, GhostPacket, CarrierType};
-use crate::transport::{Transport, PeerId};
+use crate::packet::{CarrierType, GhostPacket, NodeIdentity, ResonanceState};
+use crate::transport::{PeerId, Transport};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
-use tracing::{error, warn, info, debug};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// Discovery beacon - temporary resonance announcement
@@ -168,8 +168,8 @@ impl DiscoveryEvent {
             .as_secs()
             - self.timestamp;
 
-        let index = ((elapsed as f64 / self.duration as f64)
-            * self.resonance_pattern.len() as f64) as usize;
+        let index = ((elapsed as f64 / self.duration as f64) * self.resonance_pattern.len() as f64)
+            as usize;
 
         self.resonance_pattern.get(index).copied()
     }
@@ -312,9 +312,9 @@ impl DiscoveryEngine {
     /// Create with default settings (local only)
     pub fn default() -> Self {
         Self::new(
-            300,  // 5 minute node timeout
-            120,  // 2 minute beacon TTL
-            0.2,  // Discovery epsilon (wider than normal)
+            300, // 5 minute node timeout
+            120, // 2 minute beacon TTL
+            0.2, // Discovery epsilon (wider than normal)
         )
     }
 
@@ -322,17 +322,19 @@ impl DiscoveryEngine {
     ///
     /// If transport is configured, broadcasts beacon to network.
     /// Otherwise, only stores locally.
-    pub async fn announce(&self, identity: &NodeIdentity, capabilities: Option<Vec<String>>) -> Result<Uuid> {
-        let beacon = DiscoveryBeacon::new(
-            identity.resonance,
-            self.beacon_ttl,
-            capabilities,
-        );
+    pub async fn announce(
+        &self,
+        identity: &NodeIdentity,
+        capabilities: Option<Vec<String>>,
+    ) -> Result<Uuid> {
+        let beacon = DiscoveryBeacon::new(identity.resonance, self.beacon_ttl, capabilities);
 
         let beacon_id = beacon.id;
 
         // Store beacon locally
-        let mut beacons = self.beacons.write()
+        let mut beacons = self
+            .beacons
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on beacons: {}", e))?;
         beacons.insert(beacon_id, beacon.clone());
         drop(beacons); // Release lock
@@ -340,8 +342,7 @@ impl DiscoveryEngine {
         // If we have transport, broadcast beacon to network
         if let Some(ref transport) = self.transport {
             // Serialize beacon to packet payload
-            let beacon_bytes = serde_json::to_vec(&beacon)
-                .context("Failed to serialize beacon")?;
+            let beacon_bytes = serde_json::to_vec(&beacon).context("Failed to serialize beacon")?;
 
             // Create Ghost packet with beacon
             let packet = GhostPacket::new(
@@ -354,11 +355,14 @@ impl DiscoveryEngine {
 
             // Broadcast via transport
             let mut t = transport.lock().await;
-            t.broadcast(packet).await
+            t.broadcast(packet)
+                .await
                 .context("Failed to broadcast beacon via transport")?;
         }
 
-        let mut stats = self.stats.write()
+        let mut stats = self
+            .stats
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         stats.beacons_sent += 1;
 
@@ -378,11 +382,15 @@ impl DiscoveryEngine {
             loop {
                 match tokio::time::timeout(
                     std::time::Duration::from_millis(10), // Short timeout
-                    t.receive()
-                ).await {
+                    t.receive(),
+                )
+                .await
+                {
                     Ok(Ok((_peer_id, packet))) => {
                         // Try to deserialize beacon from packet payload
-                        if let Ok(beacon) = serde_json::from_slice::<DiscoveryBeacon>(&packet.masked_payload) {
+                        if let Ok(beacon) =
+                            serde_json::from_slice::<DiscoveryBeacon>(&packet.masked_payload)
+                        {
                             if self.receive_beacon(beacon).is_ok() {
                                 beacons_received += 1;
                             }
@@ -416,7 +424,9 @@ impl DiscoveryEngine {
         let beacon_id = beacon.id;
 
         // Store beacon
-        let mut beacons = self.beacons.write()
+        let mut beacons = self
+            .beacons
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on beacons: {}", e))?;
         beacons.insert(beacon_id, beacon.clone());
         drop(beacons); // Release lock
@@ -430,8 +440,9 @@ impl DiscoveryEngine {
         };
 
         // Add to discovered nodes
-        let mut discovered = self.discovered_nodes.write()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on discovered_nodes: {}", e))?;
+        let mut discovered = self.discovered_nodes.write().map_err(|e| {
+            anyhow::anyhow!("Failed to acquire write lock on discovered_nodes: {}", e)
+        })?;
         let is_new_node = if let Some(node) = discovered.get_mut(&node_identity.id) {
             node.update_last_seen();
             false
@@ -442,7 +453,9 @@ impl DiscoveryEngine {
         };
         drop(discovered); // Release lock
 
-        let mut stats = self.stats.write()
+        let mut stats = self
+            .stats
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
         if is_new_node {
             stats.nodes_discovered += 1;
@@ -462,11 +475,10 @@ impl DiscoveryEngine {
 
     /// Find nodes matching a resonance state
     pub fn find_nodes(&self, target_resonance: &ResonanceState) -> Vec<DiscoveredNode> {
-        let discovered = self.discovered_nodes.read()
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: RwLock poisoned in find_nodes: {}", e);
-                e.into_inner()
-            });
+        let discovered = self.discovered_nodes.read().unwrap_or_else(|e| {
+            eprintln!("Warning: RwLock poisoned in find_nodes: {}", e);
+            e.into_inner()
+        });
 
         discovered
             .values()
@@ -483,11 +495,13 @@ impl DiscoveryEngine {
 
     /// Find nodes with specific capabilities
     pub fn find_nodes_with_capabilities(&self, required_caps: &[String]) -> Vec<DiscoveredNode> {
-        let discovered = self.discovered_nodes.read()
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: RwLock poisoned in find_nodes_with_capabilities: {}", e);
-                e.into_inner()
-            });
+        let discovered = self.discovered_nodes.read().unwrap_or_else(|e| {
+            eprintln!(
+                "Warning: RwLock poisoned in find_nodes_with_capabilities: {}",
+                e
+            );
+            e.into_inner()
+        });
 
         discovered
             .values()
@@ -516,7 +530,9 @@ impl DiscoveryEngine {
         let event = DiscoveryEvent::new(resonance_pattern, duration, event_type);
         let event_id = event.id;
 
-        let mut events = self.events.write()
+        let mut events = self
+            .events
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on events: {}", e))?;
         events.insert(event_id, event);
 
@@ -525,7 +541,9 @@ impl DiscoveryEngine {
 
     /// Participate in discovery event
     pub fn participate_in_event(&self, event_id: Uuid) -> Result<Option<ResonanceState>> {
-        let events = self.events.read()
+        let events = self
+            .events
+            .read()
             .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on events: {}", e))?;
 
         if let Some(event) = events.get(&event_id) {
@@ -533,7 +551,9 @@ impl DiscoveryEngine {
                 let current_resonance = event.current_resonance();
                 drop(events); // Release read lock before acquiring write lock
 
-                let mut stats = self.stats.write()
+                let mut stats = self
+                    .stats
+                    .write()
                     .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on stats: {}", e))?;
                 stats.events_participated += 1;
 
@@ -548,11 +568,10 @@ impl DiscoveryEngine {
 
     /// Get all active nodes
     pub fn get_active_nodes(&self) -> Vec<DiscoveredNode> {
-        let discovered = self.discovered_nodes.read()
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: RwLock poisoned in get_active_nodes: {}", e);
-                e.into_inner()
-            });
+        let discovered = self.discovered_nodes.read().unwrap_or_else(|e| {
+            eprintln!("Warning: RwLock poisoned in get_active_nodes: {}", e);
+            e.into_inner()
+        });
 
         discovered
             .values()
@@ -564,7 +583,9 @@ impl DiscoveryEngine {
     /// Cleanup expired beacons and inactive nodes
     pub fn cleanup(&self) -> Result<(usize, usize)> {
         // Cleanup expired beacons
-        let mut beacons = self.beacons.write()
+        let mut beacons = self
+            .beacons
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on beacons: {}", e))?;
         let expired_beacons: Vec<Uuid> = beacons
             .iter()
@@ -578,8 +599,9 @@ impl DiscoveryEngine {
         drop(beacons); // Release lock
 
         // Cleanup inactive nodes
-        let mut discovered = self.discovered_nodes.write()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on discovered_nodes: {}", e))?;
+        let mut discovered = self.discovered_nodes.write().map_err(|e| {
+            anyhow::anyhow!("Failed to acquire write lock on discovered_nodes: {}", e)
+        })?;
         let inactive_nodes: Vec<Uuid> = discovered
             .iter()
             .filter(|(_, node)| !node.is_active(self.node_timeout))
@@ -595,7 +617,8 @@ impl DiscoveryEngine {
 
     /// Get statistics
     pub fn get_stats(&self) -> DiscoveryStats {
-        self.stats.read()
+        self.stats
+            .read()
             .unwrap_or_else(|e| {
                 eprintln!("Warning: RwLock poisoned in get_stats: {}", e);
                 e.into_inner()
@@ -610,11 +633,10 @@ impl DiscoveryEngine {
 
     /// Get active beacon count
     pub fn active_beacon_count(&self) -> usize {
-        let beacons = self.beacons.read()
-            .unwrap_or_else(|e| {
-                eprintln!("Warning: RwLock poisoned in active_beacon_count: {}", e);
-                e.into_inner()
-            });
+        let beacons = self.beacons.read().unwrap_or_else(|e| {
+            eprintln!("Warning: RwLock poisoned in active_beacon_count: {}", e);
+            e.into_inner()
+        });
         beacons.values().filter(|b| b.is_valid()).count()
     }
 }
@@ -718,7 +740,8 @@ mod tests {
         assert_eq!(found.len(), 2);
 
         // Find nodes with both storage and compute
-        let found = engine.find_nodes_with_capabilities(&["storage".to_string(), "compute".to_string()]);
+        let found =
+            engine.find_nodes_with_capabilities(&["storage".to_string(), "compute".to_string()]);
         assert_eq!(found.len(), 1);
     }
 

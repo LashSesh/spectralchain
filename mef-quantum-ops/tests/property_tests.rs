@@ -14,8 +14,8 @@ use proptest::prelude::*;
 /// Helper: Generate arbitrary masking parameters
 fn arb_masking_params() -> impl Strategy<Value = MaskingParams> {
     (
-        0.0..std::f64::consts::TAU,  // theta in [0, 2π]
-        prop::array::uniform32(any::<u8>()),  // sigma: 32 random bytes
+        0.0..std::f64::consts::TAU,          // theta in [0, 2π]
+        prop::array::uniform32(any::<u8>()), // sigma: 32 random bytes
     )
         .prop_map(|(theta, sigma)| MaskingParams::new(theta, sigma))
 }
@@ -126,16 +126,14 @@ proptest! {
 /// Helper: Generate arbitrary resonance params
 fn arb_resonance_params() -> impl Strategy<Value = ResonanceParams> {
     (
-        0.0..=1.0,  // epsilon (threshold)
+        0.0..=1.0, // epsilon (threshold)
         arb_bytes(32).prop_map(|v| {
             let mut arr = [0u8; 32];
             arr.copy_from_slice(&v[..32.min(v.len())]);
             arr
-        }),  // seed
+        }), // seed
     )
-        .prop_map(|(epsilon, seed)| {
-            ResonanceParams::new(epsilon, seed)
-        })
+        .prop_map(|(epsilon, seed)| ResonanceParams::new(epsilon, seed))
 }
 
 proptest! {

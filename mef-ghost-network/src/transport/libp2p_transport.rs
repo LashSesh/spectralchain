@@ -13,7 +13,7 @@
  * - Ping for connection health
  */
 
-use super::{PeerId, PeerManager, PacketCodec, Transport, TransportConfig, TransportStats};
+use super::{PacketCodec, PeerId, PeerManager, Transport, TransportConfig, TransportStats};
 use crate::packet::GhostPacket;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -106,7 +106,10 @@ pub struct Libp2pTransport {
 /// Commands to send to Swarm event loop
 #[derive(Debug)]
 enum SwarmCommand {
-    Dial(Multiaddr, tokio::sync::oneshot::Sender<Result<super::PeerId>>),
+    Dial(
+        Multiaddr,
+        tokio::sync::oneshot::Sender<Result<super::PeerId>>,
+    ),
     Broadcast(Vec<u8>),
     Shutdown,
 }
@@ -162,15 +165,13 @@ impl Libp2pTransport {
             .context("Failed to subscribe to gossipsub topic")?;
 
         // Create Identify
-        let identify_config = identify::Config::new(
-            "/ghost-protocol/1.0.0".to_string(),
-            local_key.public(),
-        );
+        let identify_config =
+            identify::Config::new("/ghost-protocol/1.0.0".to_string(), local_key.public());
         let identify = identify::Behaviour::new(identify_config);
 
         // Create Ping
-        let ping_config = ping::Config::new()
-            .with_interval(Duration::from_secs(config.ping_interval_secs));
+        let ping_config =
+            ping::Config::new().with_interval(Duration::from_secs(config.ping_interval_secs));
         let ping = ping::Behaviour::new(ping_config);
 
         // Create behaviour
@@ -181,8 +182,7 @@ impl Libp2pTransport {
         };
 
         // Build swarm
-        let swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, libp2p_peer_id)
-            .build();
+        let swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, libp2p_peer_id).build();
 
         let codec = PacketCodec::new(config.wire_format);
         let peer_manager = Arc::new(RwLock::new(PeerManager::default()));

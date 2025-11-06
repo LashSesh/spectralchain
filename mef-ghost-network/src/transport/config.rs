@@ -59,7 +59,7 @@ impl TransportConfig {
     /// Create configuration for local development/testing
     pub fn local() -> Self {
         Self {
-            wire_format: WireFormat::Json, // Use JSON for debugging
+            wire_format: WireFormat::Json,     // Use JSON for debugging
             max_packet_size: 10 * 1024 * 1024, // 10 MB (generous for testing)
             connection_timeout_secs: 10,
             keepalive_interval_secs: 30,
