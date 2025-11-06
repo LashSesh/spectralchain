@@ -11,12 +11,14 @@
 //! - `concurrency`: Safe concurrency primitives and patterns
 //! - `result_ext`: Extension traits for Result types
 //! - `types`: Common type definitions and aliases
+//! - `resilience`: Self-healing infrastructure (circuit breakers, health checks)
 
 pub mod time;
 pub mod error;
 pub mod concurrency;
 pub mod result_ext;
 pub mod types;
+pub mod resilience;
 
 // Property-based testing support (feature-gated)
 #[cfg(any(test, feature = "proptest-support"))]
