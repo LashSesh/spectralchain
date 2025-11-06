@@ -14,9 +14,67 @@ use crate::packet::{GhostPacket, GhostTransaction, NodeIdentity, ResonanceState}
 use crate::protocol::{GhostProtocol, MaskingParams, ProtocolConfig};
 use crate::transport::{Libp2pTransport, PeerId, Transport, TransportConfig};
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
+
+/// Wrapper to enable passing Arc<Mutex<Libp2pTransport>> as Arc<Mutex<dyn Transport>>
+///
+/// This wrapper is necessary because Rust cannot unsize through Mutex<T> to Mutex<dyn Trait>.
+/// We wrap the Arc<Mutex<Libp2pTransport>> and implement Transport by delegating all methods.
+struct TransportWrapper {
+    inner: Arc<Mutex<Libp2pTransport>>,
+}
+
+impl TransportWrapper {
+    fn new(transport: Arc<Mutex<Libp2pTransport>>) -> Self {
+        Self { inner: transport }
+    }
+}
+
+#[async_trait]
+impl Transport for TransportWrapper {
+    async fn listen(&mut self, addr: String) -> Result<()> {
+        self.inner.lock().await.listen(addr).await
+    }
+
+    async fn dial(&mut self, addr: String) -> Result<PeerId> {
+        self.inner.lock().await.dial(addr).await
+    }
+
+    async fn send(&mut self, peer: PeerId, packet: GhostPacket) -> Result<()> {
+        self.inner.lock().await.send(peer, packet).await
+    }
+
+    async fn broadcast(&mut self, packet: GhostPacket) -> Result<()> {
+        self.inner.lock().await.broadcast(packet).await
+    }
+
+    async fn receive(&mut self) -> Result<(PeerId, GhostPacket)> {
+        self.inner.lock().await.receive().await
+    }
+
+    fn peers(&self) -> Vec<PeerId> {
+        // For non-async methods, we need to use try_lock or block_on
+        // Since we're in a sync context, we'll use try_lock with fallback
+        self.inner
+            .try_lock()
+            .map(|guard| guard.peers())
+            .unwrap_or_default()
+    }
+
+    fn local_peer_id(&self) -> PeerId {
+        self.inner
+            .try_lock()
+            .map(|guard| guard.local_peer_id())
+            .unwrap_or_default()
+    }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        self.inner.lock().await.shutdown().await
+    }
+}
 
 /// Complete Ghost Network node
 ///
@@ -72,12 +130,19 @@ impl GhostNetworkNode {
                 .context("Failed to create libp2p transport")?,
         ));
 
+        // Create trait object wrapper for broadcast and discovery
+        // We wrap the Arc<Mutex<Libp2pTransport>> in TransportWrapper which implements Transport
+        // Then wrap that in Arc<Mutex<dyn Transport>> for sharing between engines
+        let transport_trait: Arc<Mutex<dyn Transport>> = Arc::new(Mutex::new(
+            TransportWrapper::new(transport.clone()),
+        ));
+
         // Create broadcast engine with transport
         let broadcast = Arc::new(BroadcastEngine::with_transport(
             1000, // max_buffer_size
             10.0, // decoy_rate
             60,   // cleanup_interval
-            transport.clone(),
+            transport_trait.clone(),
         ));
 
         // Create discovery engine with transport
@@ -85,7 +150,7 @@ impl GhostNetworkNode {
             300, // node_timeout
             120, // beacon_ttl
             0.2, // discovery_epsilon
-            transport.clone(),
+            transport_trait,
         ));
 
         // Create protocol

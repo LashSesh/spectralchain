@@ -203,6 +203,7 @@ impl Libp2pTransport {
             stats_clone,
             running_clone,
             topic_clone,
+            codec.clone(),
         ));
 
         Ok(Self {
@@ -240,6 +241,7 @@ impl Libp2pTransport {
         stats: Arc<RwLock<TransportStats>>,
         running: Arc<RwLock<bool>>,
         topic: gossipsub::IdentTopic,
+        codec: PacketCodec,
     ) {
         info!("Swarm event loop started");
 
@@ -291,8 +293,7 @@ impl Libp2pTransport {
                         })) => {
                             debug!("Received gossipsub message from {}", propagation_source);
 
-                            // Decode packet
-                            let codec = PacketCodec::default();
+                            // Decode packet using configured codec (respects wire format from config)
                             match codec.decode(&message.data) {
                                 Ok(packet) => {
                                     let peer_id = Self::libp2p_to_peer_id(&propagation_source);

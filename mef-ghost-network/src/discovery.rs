@@ -345,12 +345,18 @@ impl DiscoveryEngine {
             let beacon_bytes = serde_json::to_vec(&beacon).context("Failed to serialize beacon")?;
 
             // Create Ghost packet with beacon
+            // For beacon announcements:
+            // - target_resonance = our resonance (nodes searching for us)
+            // - sender_resonance = our resonance (we're announcing ourselves)
+            // - masked_payload = beacon data
+            // - stego_carrier = same data (no steganography for beacons)
             let packet = GhostPacket::new(
-                identity.resonance,
-                beacon_bytes.clone(),
-                beacon_bytes,
-                CarrierType::Raw,
-                None,
+                identity.resonance,        // target_resonance
+                identity.resonance,        // sender_resonance
+                beacon_bytes.clone(),      // masked_payload
+                beacon_bytes,              // stego_carrier
+                CarrierType::Raw,          // carrier_type
+                None,                      // zk_proof
             );
 
             // Broadcast via transport

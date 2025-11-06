@@ -27,6 +27,7 @@ impl Default for WireFormat {
 }
 
 /// Packet codec for serialization/deserialization
+#[derive(Clone)]
 pub struct PacketCodec {
     format: WireFormat,
 }

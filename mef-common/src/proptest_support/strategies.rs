@@ -37,7 +37,7 @@ pub fn permutation(n: usize) -> impl Strategy<Value = Vec<usize>> {
         let mut perm: Vec<usize> = (0..n).collect();
         // Fisher-Yates shuffle
         for i in (1..n).rev() {
-            let j = rng.gen_range(0..=i);
+            let j = rng.random_range(0..=i);
             perm.swap(i, j);
         }
         perm
@@ -71,8 +71,8 @@ pub fn concurrent_scenario() -> impl Strategy<Value = (usize, usize)> {
 ///
 /// Returns (total_nodes, partition_sizes)
 pub fn network_partition(max_nodes: usize) -> impl Strategy<Value = (usize, Vec<usize>)> {
-    (2..=max_nodes).prop_flat_map(|total| {
-        let num_partitions = 2..=4;
+    (2usize..=max_nodes).prop_flat_map(|total| {
+        let num_partitions = 2usize..=4usize;
         num_partitions.prop_flat_map(move |n_parts| {
             // Generate partition sizes that sum to total
             partition_sizes(total, n_parts).prop_map(move |sizes| (total, sizes))
@@ -87,7 +87,7 @@ fn partition_sizes(total: usize, num_partitions: usize) -> impl Strategy<Value =
 
         // Distribute remaining nodes
         for _ in 0..remaining {
-            let idx = rng.gen_range(0..num_partitions);
+            let idx = rng.random_range(0..num_partitions);
             sizes[idx] += 1;
         }
 
@@ -99,7 +99,7 @@ fn partition_sizes(total: usize, num_partitions: usize) -> impl Strategy<Value =
 ///
 /// Returns (start_time, events: Vec<(offset, data)>)
 pub fn time_series<T: Clone>(
-    event_data: impl Strategy<Value = T>,
+    event_data: impl Strategy<Value = T> + Clone,
     num_events: usize,
 ) -> impl Strategy<Value = (u64, Vec<(u64, T)>)> {
     let start = 1577836800u64..=1893456000u64; // 2020-2030
