@@ -124,13 +124,25 @@ pub struct BroadcastEngine {
     max_buffer_size: usize,
 
     /// Decoy traffic generation rate (packets per second)
-    decoy_rate: f64,
+    _decoy_rate: f64,
 
     /// Automatic channel cleanup interval (seconds)
-    cleanup_interval: u64,
+    _cleanup_interval: u64,
 
     /// Optional network transport (None = in-memory only)
     transport: Option<Arc<Mutex<dyn Transport>>>,
+}
+
+impl std::fmt::Debug for BroadcastEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BroadcastEngine")
+            .field("channels", &self.channels)
+            .field("buffers", &"<packet buffers>")
+            .field("stats", &self.stats)
+            .field("max_buffer_size", &self.max_buffer_size)
+            .field("transport", &self.transport.is_some())
+            .finish()
+    }
 }
 
 impl BroadcastEngine {
@@ -141,8 +153,8 @@ impl BroadcastEngine {
             buffers: Arc::new(RwLock::new(HashMap::new())),
             stats: Arc::new(RwLock::new(BroadcastStats::default())),
             max_buffer_size,
-            decoy_rate,
-            cleanup_interval,
+            _decoy_rate: decoy_rate,
+            _cleanup_interval: cleanup_interval,
             transport: None,
         }
     }
@@ -159,8 +171,8 @@ impl BroadcastEngine {
             buffers: Arc::new(RwLock::new(HashMap::new())),
             stats: Arc::new(RwLock::new(BroadcastStats::default())),
             max_buffer_size,
-            decoy_rate,
-            cleanup_interval,
+            _decoy_rate: decoy_rate,
+            _cleanup_interval: cleanup_interval,
             transport: Some(transport),
         }
     }

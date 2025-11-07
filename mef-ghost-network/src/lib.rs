@@ -127,6 +127,17 @@ pub struct GhostNetwork {
     pub identity: Arc<std::sync::RwLock<NodeIdentity>>,
 }
 
+impl std::fmt::Debug for GhostNetwork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GhostNetwork")
+            .field("protocol", &"GhostProtocol")
+            .field("broadcast", &"BroadcastEngine")
+            .field("discovery", &"DiscoveryEngine")
+            .field("identity", &"NodeIdentity")
+            .finish()
+    }
+}
+
 impl GhostNetwork {
     /// Create new ghost network with custom configuration
     pub fn new(protocol_config: ProtocolConfig, identity: NodeIdentity) -> Self {

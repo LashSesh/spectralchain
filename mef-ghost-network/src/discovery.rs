@@ -275,6 +275,21 @@ pub struct DiscoveryEngine {
     transport: Option<Arc<Mutex<dyn Transport>>>,
 }
 
+impl std::fmt::Debug for DiscoveryEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiscoveryEngine")
+            .field("beacons", &"<beacon map>")
+            .field("discovered_nodes", &"<node map>")
+            .field("events", &"<event map>")
+            .field("stats", &self.stats)
+            .field("node_timeout", &self.node_timeout)
+            .field("beacon_ttl", &self.beacon_ttl)
+            .field("discovery_epsilon", &self.discovery_epsilon)
+            .field("transport", &self.transport.is_some())
+            .finish()
+    }
+}
+
 impl DiscoveryEngine {
     /// Create new discovery engine (local only)
     pub fn new(node_timeout: u64, beacon_ttl: u64, discovery_epsilon: f64) -> Self {

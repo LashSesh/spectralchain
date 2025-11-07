@@ -96,7 +96,19 @@ pub struct GhostNetworkNode {
     protocol: Arc<GhostProtocol>,
 
     /// Main broadcast channel ID
-    main_channel_id: uuid::Uuid,
+    _main_channel_id: uuid::Uuid,
+}
+
+impl std::fmt::Debug for GhostNetworkNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GhostNetworkNode")
+            .field("identity", &self.identity)
+            .field("transport", &"<transport>")
+            .field("broadcast", &"<broadcast engine>")
+            .field("discovery", &"<discovery engine>")
+            .field("protocol", &"<protocol>")
+            .finish()
+    }
 }
 
 impl GhostNetworkNode {
@@ -174,7 +186,7 @@ impl GhostNetworkNode {
             broadcast,
             discovery,
             protocol,
-            main_channel_id,
+            _main_channel_id: main_channel_id,
         })
     }
 

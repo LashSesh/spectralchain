@@ -103,6 +103,15 @@ pub struct PeerManager {
     max_idle_time: u64,
 }
 
+impl std::fmt::Debug for PeerManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerManager")
+            .field("peers", &"<peer map>")
+            .field("max_idle_time", &self.max_idle_time)
+            .finish()
+    }
+}
+
 impl PeerManager {
     /// Create new peer manager
     pub fn new(max_idle_time: u64) -> Self {
@@ -223,9 +232,13 @@ impl Default for PeerManager {
 /// Peer manager statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerManagerStats {
+    /// Number of connected peers
     pub peer_count: usize,
+    /// Total packets sent to all peers
     pub total_packets_sent: u64,
+    /// Total packets received from all peers
     pub total_packets_received: u64,
+    /// Average quality score across all peers
     pub average_quality: f64,
 }
 

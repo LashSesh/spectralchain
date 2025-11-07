@@ -32,6 +32,14 @@ pub struct PacketCodec {
     format: WireFormat,
 }
 
+impl std::fmt::Debug for PacketCodec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PacketCodec")
+            .field("format", &self.format)
+            .finish()
+    }
+}
+
 impl PacketCodec {
     /// Create new codec with specified format
     pub fn new(format: WireFormat) -> Self {

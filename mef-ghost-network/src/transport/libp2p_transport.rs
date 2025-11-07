@@ -30,7 +30,7 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
 
 /// Maximum size for receive channel
-const RX_CHANNEL_SIZE: usize = 1000;
+const _RX_CHANNEL_SIZE: usize = 1000;
 
 /// libp2p Network Behaviour for Ghost Protocol
 #[derive(NetworkBehaviour)]
@@ -88,10 +88,10 @@ pub struct Libp2pTransport {
     local_peer_id: super::PeerId,
 
     /// libp2p peer ID
-    libp2p_peer_id: Libp2pPeerId,
+    _libp2p_peer_id: Libp2pPeerId,
 
     /// Gossipsub topic
-    topic: gossipsub::IdentTopic,
+    _topic: gossipsub::IdentTopic,
 
     /// Packet receive channel (using tokio::Mutex for Send-safe async)
     rx_channel: Arc<Mutex<mpsc::UnboundedReceiver<(super::PeerId, GhostPacket)>>>,
@@ -101,6 +101,19 @@ pub struct Libp2pTransport {
 
     /// Is transport running
     running: Arc<RwLock<bool>>,
+}
+
+impl std::fmt::Debug for Libp2pTransport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Libp2pTransport")
+            .field("config", &self.config)
+            .field("codec", &self.codec)
+            .field("peer_manager", &"<peer manager>")
+            .field("stats", &self.stats)
+            .field("local_peer_id", &self.local_peer_id)
+            .field("running", &self.running)
+            .finish()
+    }
 }
 
 /// Commands to send to Swarm event loop
@@ -212,8 +225,8 @@ impl Libp2pTransport {
             peer_manager,
             stats,
             local_peer_id,
-            libp2p_peer_id,
-            topic,
+            _libp2p_peer_id: libp2p_peer_id,
+            _topic: topic,
             rx_channel: Arc::new(Mutex::new(rx_packets)),
             tx_to_swarm,
             running,

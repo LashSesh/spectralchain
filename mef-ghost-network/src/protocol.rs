@@ -289,6 +289,17 @@ pub struct GhostProtocol {
     network_conditions: Arc<RwLock<NetworkConditions>>,
 }
 
+impl std::fmt::Debug for GhostProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GhostProtocol")
+            .field("config", &self.config)
+            .field("timestamp_failure_tracker", &"<failure tracker>")
+            .field("metrics", &self.metrics)
+            .field("network_conditions", &self.network_conditions)
+            .finish()
+    }
+}
+
 impl NetworkConditions {
     fn new() -> Self {
         Self {
@@ -1049,7 +1060,7 @@ impl GhostProtocol {
 
         let expected = hasher.finalize();
 
-        if proof == expected.as_slice() {
+        if proof == &expected[..] {
             Ok(())
         } else {
             anyhow::bail!("ZK proof verification failed")
