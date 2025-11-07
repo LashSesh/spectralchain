@@ -95,6 +95,7 @@ impl PeerInfo {
 }
 
 /// Peer manager for tracking connections
+#[derive(Debug)]
 pub struct PeerManager {
     /// Connected peers
     peers: Arc<RwLock<HashMap<PeerId, PeerInfo>>>,
@@ -223,9 +224,13 @@ impl Default for PeerManager {
 /// Peer manager statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerManagerStats {
+    /// Number of currently connected peers
     pub peer_count: usize,
+    /// Total packets sent across all peers
     pub total_packets_sent: u64,
+    /// Total packets received across all peers
     pub total_packets_received: u64,
+    /// Average connection quality score across all peers
     pub average_quality: f64,
 }
 

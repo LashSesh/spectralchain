@@ -113,6 +113,7 @@ use std::sync::Arc;
 ///
 /// This provides a unified interface for the Ghost Networking Protocol,
 /// combining protocol flow, broadcasting, and discovery.
+#[derive(Debug)]
 pub struct GhostNetwork {
     /// Protocol implementation
     pub protocol: Arc<GhostProtocol>,

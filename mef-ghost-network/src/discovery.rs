@@ -249,6 +249,7 @@ pub struct DiscoveryStats {
 }
 
 /// Discovery engine for finding nodes via resonance
+#[derive(Debug)]
 pub struct DiscoveryEngine {
     /// Active beacons (own and received)
     beacons: Arc<RwLock<HashMap<Uuid, DiscoveryBeacon>>>,

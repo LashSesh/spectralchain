@@ -79,6 +79,7 @@ impl Transport for TransportWrapper {
 /// Complete Ghost Network node
 ///
 /// Combines transport, broadcasting, discovery, and protocol into a single interface.
+#[derive(Debug)]
 pub struct GhostNetworkNode {
     /// Node identity (resonance state)
     identity: NodeIdentity,
@@ -96,6 +97,7 @@ pub struct GhostNetworkNode {
     protocol: Arc<GhostProtocol>,
 
     /// Main broadcast channel ID
+    #[allow(dead_code)]
     main_channel_id: uuid::Uuid,
 }
 

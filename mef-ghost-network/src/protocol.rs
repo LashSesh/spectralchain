@@ -279,6 +279,7 @@ struct NetworkConditions {
 }
 
 /// Ghost Protocol - Core protocol implementation
+#[derive(Debug)]
 pub struct GhostProtocol {
     config: ProtocolConfig,
     /// Rate limiter for timestamp failures (key: sender resonance hash)
@@ -1049,7 +1050,7 @@ impl GhostProtocol {
 
         let expected = hasher.finalize();
 
-        if proof == expected.as_slice() {
+        if proof == &*expected {
             Ok(())
         } else {
             anyhow::bail!("ZK proof verification failed")

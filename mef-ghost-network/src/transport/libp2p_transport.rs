@@ -30,6 +30,7 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
 
 /// Maximum size for receive channel
+#[allow(dead_code)]
 const RX_CHANNEL_SIZE: usize = 1000;
 
 /// libp2p Network Behaviour for Ghost Protocol
@@ -71,6 +72,7 @@ impl From<ping::Event> for GhostBehaviourEvent {
 }
 
 /// libp2p-based transport implementation
+#[derive(Debug)]
 pub struct Libp2pTransport {
     /// Transport configuration
     config: TransportConfig,
@@ -88,9 +90,11 @@ pub struct Libp2pTransport {
     local_peer_id: super::PeerId,
 
     /// libp2p peer ID
+    #[allow(dead_code)]
     libp2p_peer_id: Libp2pPeerId,
 
     /// Gossipsub topic
+    #[allow(dead_code)]
     topic: gossipsub::IdentTopic,
 
     /// Packet receive channel (using tokio::Mutex for Send-safe async)
@@ -182,7 +186,12 @@ impl Libp2pTransport {
         };
 
         // Build swarm using new libp2p 0.53 API
-        let swarm = Swarm::new(transport, behaviour, libp2p_peer_id, Config::with_tokio_executor());
+        let swarm = Swarm::new(
+            transport,
+            behaviour,
+            libp2p_peer_id,
+            Config::with_tokio_executor(),
+        );
 
         let codec = PacketCodec::new(config.wire_format);
         let peer_manager = Arc::new(RwLock::new(PeerManager::default()));

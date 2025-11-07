@@ -110,6 +110,7 @@ pub struct BroadcastStats {
 }
 
 /// Addressless broadcast engine
+#[derive(Debug)]
 pub struct BroadcastEngine {
     /// Active broadcast channels
     channels: Arc<RwLock<HashMap<uuid::Uuid, BroadcastChannel>>>,
@@ -124,9 +125,11 @@ pub struct BroadcastEngine {
     max_buffer_size: usize,
 
     /// Decoy traffic generation rate (packets per second)
+    #[allow(dead_code)]
     decoy_rate: f64,
 
     /// Automatic channel cleanup interval (seconds)
+    #[allow(dead_code)]
     cleanup_interval: u64,
 
     /// Optional network transport (None = in-memory only)
