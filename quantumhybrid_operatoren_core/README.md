@@ -202,6 +202,55 @@ let result = wt.apply(&v);
 
 ---
 
+### 7. **Quantum State Operator (QS)**
+
+**Mathematische Formel:**
+```
+|ψ⟩ = Σᵢ αᵢ|i⟩,  i ∈ {1, 2, ..., 13}
+|ψ'⟩ = U|ψ⟩,  wobei U†U = I
+```
+
+**Beschreibung:**
+- 13-dimensionaler Hilbert-Raum auf Metatron Cube
+- Quantenmechanische Zustände und unitäre Operatoren
+- Superposition, Messung, Verschränkung
+- Normalisierung: Σᵢ |αᵢ|² = 1
+
+**Anwendung:**
+```rust
+use quantumhybrid_operatoren_core::prelude::*;
+use num_complex::Complex64;
+
+// Create quantum state
+let amps = vec![Complex64::new(1.0, 0.0), Complex64::new(1.0, 0.0)];
+let state = QuantumState::new(amps, true)?;
+
+// Apply unitary operator
+let permutation = vec![2, 3, 1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+let operator = QuantumUnitaryOperator::from_permutation(&permutation);
+let new_state = state.apply(&operator)?;
+
+// Measure
+let mut measurement_state = state.clone();
+let node = measurement_state.measure();
+```
+
+**Use Cases:**
+- Post-symbolic cognition (Theory of Everything)
+- Quantum-inspired consensus algorithms
+- Entanglement across multiple cubes
+- Symmetry-preserving transformations
+
+**Spezielle Features:**
+- Basis states: `|i⟩` für jeden der 13 Nodes
+- Uniform superposition: `|ψ⟩ = (1/√13) Σᵢ |i⟩`
+- Permutation operators aus Symmetriegruppen
+- Measurement collapse mit Wahrscheinlichkeit P(i) = |αᵢ|²
+- Inner product: `⟨φ|ψ⟩`
+- Expectation values: `⟨O⟩ = ⟨ψ|O|ψ⟩`
+
+---
+
 ## 🏗️ Architektur
 
 ```
@@ -217,10 +266,12 @@ quantumhybrid_operatoren_core/
 │   │   ├── sweep.rs
 │   │   ├── pfadinvarianz.rs
 │   │   ├── weight_transfer.rs
+│   │   ├── quantum_state.rs
 │   │   └── mod.rs
 │   └── lib.rs                 # Main library
 ├── examples/
-│   └── basic_usage.rs
+│   ├── basic_usage.rs
+│   └── quantum_state_demo.rs
 ├── tests/
 │   └── integration_tests.rs
 ├── docs/
@@ -428,7 +479,7 @@ Contributions sind willkommen! Siehe CONTRIBUTING.md für Details.
 ### Zukünftige Operatoren
 - [ ] **Steganography Operator (T)**: Zero-width Unicode + LSB
 - [ ] **Zero-Knowledge Proof Operator (ZK)**: Schnorr, Range Proofs
-- [ ] **Quantum State Operator**: 13-dimensional Hilbert space (Metatron Cube)
+- [x] **Quantum State Operator**: 13-dimensional Hilbert space (Metatron Cube) ✅
 - [ ] **Mandorla Attractor**: Fork resolution via coherence scoring
 
 ### Verbesserungen
@@ -454,6 +505,7 @@ Contributions sind willkommen! Siehe CONTRIBUTING.md für Details.
 | Sweep (SW) | 1.0 | ❌ | ❌ | 5 |
 | Pfadinvarianz (PI) | 1.0 | ❌ | ✅ | 5 |
 | WeightTransfer (WT) | 1.0 | ❌ | ❌ | 5 |
+| QuantumState (QS) | 1.0 | ✅ (U†) | ❌ | 13 |
 
 ## 🌟 Highlights
 

@@ -93,8 +93,10 @@ pub mod prelude {
     // Operators
     pub use crate::operators::{
         DoubleKick, DoubleKickInfo, DoubleKickParams, MaskingOperator, MaskingParams,
-        Pfadinvarianz, PfadinvarianzParams, ResonanceInput, ResonanceOperator, ResonanceState,
+        Pfadinvarianz, PfadinvarianzParams, QuantumState, QuantumStateParams,
+        QuantumUnitaryOperator, ResonanceInput, ResonanceOperator, ResonanceState,
         ResonanceWindow, ScaleLevel, Sweep, SweepParams, WeightTransfer, WeightTransferParams,
+        METATRON_DIMENSION,
     };
 }
 
@@ -114,5 +116,7 @@ mod tests {
         let _sweep = Sweep::default();
         let _pi = Pfadinvarianz::default();
         let _wt = WeightTransfer::default();
+        let _qop = QuantumUnitaryOperator::identity();
+        let _qstate = QuantumState::basis_state(0).unwrap();
     }
 }
