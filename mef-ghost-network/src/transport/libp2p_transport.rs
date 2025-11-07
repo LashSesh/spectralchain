@@ -323,6 +323,7 @@ impl Libp2pTransport {
                         SwarmEvent::Behaviour(GhostBehaviourEvent::Identify(identify::Event::Received {
                             peer_id,
                             info,
+                            ..
                         })) => {
                             debug!("Identified peer {}: {:?}", peer_id, info.protocol_version);
 

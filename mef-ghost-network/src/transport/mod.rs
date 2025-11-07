@@ -102,7 +102,7 @@ impl Default for PeerId {
 /// over a real network. Implementations handle the underlying
 /// networking stack (libp2p, TCP, UDP, QUIC, etc.)
 #[async_trait]
-pub trait Transport: Send + Sync {
+pub trait Transport: Send + Sync + std::fmt::Debug {
     /// Listen on a network address
     ///
     /// # Arguments

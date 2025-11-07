@@ -52,7 +52,7 @@ pub fn s7_permutation() -> impl Strategy<Value = Vec<usize>> {
 /// Strategy for generating sequences of operations
 ///
 /// Useful for testing state machines and workflows
-pub fn operation_sequence<T: Clone>(
+pub fn operation_sequence<T: Clone + std::fmt::Debug>(
     op: impl Strategy<Value = T>,
     min_len: usize,
     max_len: usize,
@@ -135,8 +135,8 @@ mod tests {
     proptest! {
         #[test]
         fn test_quantum_masking_params_in_range((theta, sigma) in quantum_masking_params()) {
-            prop_assert!(theta >= 0.0 && theta <= std::f64::consts::TAU);
-            prop_assert!(sigma >= 0.0 && sigma <= 1.0);
+            prop_assert!((0.0..=std::f64::consts::TAU).contains(&theta));
+            prop_assert!((0.0..=1.0).contains(&sigma));
         }
 
         #[test]
@@ -161,8 +161,8 @@ mod tests {
 
         #[test]
         fn test_concurrent_scenario_reasonable((threads, ops) in concurrent_scenario()) {
-            prop_assert!(threads >= 1 && threads <= 16);
-            prop_assert!(ops >= 1 && ops <= 100);
+            prop_assert!((1..=16).contains(&threads));
+            prop_assert!((1..=100).contains(&ops));
         }
 
         #[test]
