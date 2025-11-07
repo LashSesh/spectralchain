@@ -894,11 +894,13 @@ impl GhostProtocol {
 
         // Step 5c: Derive masking parameters with key rotation support (R-03-001)
         // The receiver can compute the same params as the sender using:
-        // sender_resonance (from packet) and target_resonance (node's own state)
+        // sender_resonance and target_resonance (both from packet)
+        // NOTE: We use packet.resonance (target) for key derivation, NOT node_state,
+        // because the key must match exactly what the sender used
         // Try the packet's epoch first, then fall back to current epoch if needed
         let mut masking_params = MaskingParams::from_resonance_with_epoch(
             &packet.sender_resonance,
-            node_state,
+            &packet.resonance,
             packet.key_epoch,
         );
 
@@ -931,7 +933,7 @@ impl GhostProtocol {
 
                     let mut fallback_params = MaskingParams::from_resonance_with_epoch(
                         &packet.sender_resonance,
-                        node_state,
+                        &packet.resonance,
                         current_epoch,
                     );
 
