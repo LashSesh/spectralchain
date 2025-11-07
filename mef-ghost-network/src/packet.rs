@@ -390,11 +390,13 @@ mod tests {
     #[test]
     fn test_ghost_packet_creation() {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
+        let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let payload = b"test payload".to_vec();
         let carrier = b"test carrier".to_vec();
 
         let packet = GhostPacket::new(
             resonance,
+            sender_resonance,
             payload.clone(),
             carrier.clone(),
             CarrierType::Raw,
@@ -410,8 +412,10 @@ mod tests {
     #[test]
     fn test_packet_integrity() {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
+        let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let packet = GhostPacket::new(
             resonance,
+            sender_resonance,
             b"payload".to_vec(),
             b"carrier".to_vec(),
             CarrierType::Raw,
@@ -430,8 +434,10 @@ mod tests {
     #[test]
     fn test_ttl_decrement() {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
+        let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let mut packet = GhostPacket::new(
             resonance,
+            sender_resonance,
             b"payload".to_vec(),
             b"carrier".to_vec(),
             CarrierType::Raw,
@@ -453,8 +459,10 @@ mod tests {
     #[test]
     fn test_packet_resonance_matching() {
         let packet_resonance = ResonanceState::new(1.0, 1.0, 1.0);
+        let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let packet = GhostPacket::new(
             packet_resonance,
+            sender_resonance,
             b"payload".to_vec(),
             b"carrier".to_vec(),
             CarrierType::Raw,
@@ -496,8 +504,10 @@ mod tests {
     #[test]
     fn test_packet_size() {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
+        let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let packet = GhostPacket::new(
             resonance,
+            sender_resonance,
             vec![0u8; 100],
             vec![0u8; 200],
             CarrierType::Raw,

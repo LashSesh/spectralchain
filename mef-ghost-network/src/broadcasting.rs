@@ -551,8 +551,10 @@ mod tests {
         engine.create_channel(resonance, 0.1, 300).unwrap();
 
         // Create and broadcast packet
+        let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let packet = GhostPacket::new(
             resonance,
+            sender_resonance,
             b"test payload".to_vec(),
             b"test carrier".to_vec(),
             CarrierType::Raw,
@@ -580,8 +582,10 @@ mod tests {
         engine.create_channel(channel_resonance, 0.1, 300).unwrap();
 
         // Broadcast packet with very different resonance
+        let sender_resonance = ResonanceState::new(10.0, 10.0, 10.0);
         let packet = GhostPacket::new(
             ResonanceState::new(10.0, 10.0, 10.0),
+            sender_resonance,
             b"test".to_vec(),
             b"test".to_vec(),
             CarrierType::Raw,
@@ -633,8 +637,10 @@ mod tests {
 
         // Broadcast 15 packets (exceeds buffer)
         for _ in 0..15 {
+            let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
             let packet = GhostPacket::new(
                 resonance,
+                sender_resonance,
                 b"test".to_vec(),
                 b"test".to_vec(),
                 CarrierType::Raw,
@@ -655,8 +661,10 @@ mod tests {
         engine.create_channel(resonance, 0.1, 300).unwrap();
 
         // Broadcast packet
+        let sender_resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let packet = GhostPacket::new(
             resonance,
+            sender_resonance,
             b"test".to_vec(),
             b"test".to_vec(),
             CarrierType::Raw,

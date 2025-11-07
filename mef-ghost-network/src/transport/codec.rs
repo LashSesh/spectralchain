@@ -136,24 +136,16 @@ mod tests {
     use uuid::Uuid;
 
     fn create_test_packet() -> GhostPacket {
-        GhostPacket {
-            id: Uuid::new_v4(),
-            sender: NodeIdentity {
-                id: Uuid::new_v4(),
-                resonance: ResonanceState::new(1.0, 1.0, 1.0),
-            },
-            target: None,
-            resonance: ResonanceState::new(2.0, 2.0, 2.0),
-            transaction: GhostTransaction {
-                action: b"test action".to_vec(),
-                zk_proof: Some(b"test proof".to_vec()),
-                timestamp: 1234567890,
-            },
-            stego_carrier: vec![1, 2, 3, 4, 5],
-            timestamp: 1234567890,
-            key_epoch: 42,
-            ephemeral_key: Some(vec![6, 7, 8, 9]),
-        }
+        use crate::packet::CarrierType;
+
+        GhostPacket::new(
+            ResonanceState::new(2.0, 2.0, 2.0),      // resonance
+            ResonanceState::new(1.0, 1.0, 1.0),      // sender_resonance
+            b"test payload".to_vec(),                 // masked_payload
+            vec![1, 2, 3, 4, 5],                      // stego_carrier
+            CarrierType::Raw,                         // carrier_type
+            Some(b"test proof".to_vec()),             // zk_proof
+        )
     }
 
     #[test]
@@ -166,7 +158,8 @@ mod tests {
 
         assert_eq!(packet.id, decoded.id);
         assert_eq!(packet.timestamp, decoded.timestamp);
-        assert_eq!(packet.transaction.action, decoded.transaction.action);
+        assert_eq!(packet.masked_payload, decoded.masked_payload);
+        assert_eq!(packet.stego_carrier, decoded.stego_carrier);
     }
 
     #[test]
@@ -179,7 +172,8 @@ mod tests {
 
         assert_eq!(packet.id, decoded.id);
         assert_eq!(packet.timestamp, decoded.timestamp);
-        assert_eq!(packet.transaction.action, decoded.transaction.action);
+        assert_eq!(packet.masked_payload, decoded.masked_payload);
+        assert_eq!(packet.stego_carrier, decoded.stego_carrier);
     }
 
     #[test]

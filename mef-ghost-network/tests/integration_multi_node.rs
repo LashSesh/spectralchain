@@ -10,7 +10,7 @@ use mef_ghost_network::integration::GhostNetworkNode;
 use mef_ghost_network::packet::ResonanceState;
 use mef_ghost_network::protocol::ProtocolConfig;
 use mef_ghost_network::transport::TransportConfig;
-use tokio::time::{sleep, timeout, Duration};
+use tokio::time::{sleep, Duration};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_two_nodes_dial_and_connect() -> Result<()> {
@@ -427,8 +427,6 @@ async fn test_concurrent_transactions() -> Result<()> {
     sleep(Duration::from_millis(1000)).await;
 
     // Send concurrent transactions
-    let mut handles = Vec::new();
-
     for i in 0..5 {
         let action = format!("Concurrent transaction {}", i).into_bytes();
         let resonance = node2_resonance;
