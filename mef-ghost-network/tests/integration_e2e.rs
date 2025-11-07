@@ -10,7 +10,6 @@ use mef_ghost_network::integration::GhostNetworkNode;
 use mef_ghost_network::packet::ResonanceState;
 use mef_ghost_network::protocol::ProtocolConfig;
 use mef_ghost_network::transport::TransportConfig;
-use tokio::time::{sleep, timeout, Duration};
 
 #[tokio::test]
 async fn test_e2e_single_node_initialization() -> Result<()> {
@@ -194,10 +193,8 @@ async fn test_e2e_protocol_6_steps() -> Result<()> {
     let metrics = node.protocol_metrics();
     // packets_sent is updated in lib.rs, packets_accepted in protocol.rs receive_packet
     // For send_transaction, we only increment packets_sent via broadcast
-    assert!(
-        metrics.packets_received >= 0,
-        "Protocol metrics should be tracked"
-    );
+    // packets_received is u64 (always >= 0), so just verify metrics exist
+    let _ = metrics.packets_received;
 
     // Cleanup
     node.shutdown().await?;
@@ -286,10 +283,8 @@ async fn test_e2e_adaptive_timestamps() -> Result<()> {
 
     let metrics = node.protocol_metrics();
     // Metrics will track timestamp validation
-    assert!(
-        metrics.packets_received >= 0,
-        "Adaptive timestamps should be tracked"
-    );
+    // packets_received is u64 (always >= 0), so just verify metrics exist
+    let _ = metrics.packets_received;
 
     // Cleanup
     node.shutdown().await?;
@@ -301,7 +296,7 @@ async fn test_e2e_adaptive_timestamps() -> Result<()> {
 async fn test_e2e_discovery_and_find_nodes() -> Result<()> {
     // Test node discovery and finding nodes by resonance
     let node1_resonance = ResonanceState::new(5.0, 5.0, 5.0);
-    let node2_resonance = ResonanceState::new(5.05, 5.05, 5.05);
+    let _node2_resonance = ResonanceState::new(5.05, 5.05, 5.05);
 
     let transport_config = TransportConfig::local();
     let protocol_config = ProtocolConfig::default();
@@ -323,7 +318,7 @@ async fn test_e2e_discovery_and_find_nodes() -> Result<()> {
     node1.poll_discovery().await?;
 
     // Find nodes by resonance
-    let found_nodes = node1.find_nodes(&node1_resonance);
+    let _found_nodes = node1.find_nodes(&node1_resonance);
     // In a single-node test, we won't find other nodes, but the API works
 
     // Cleanup
