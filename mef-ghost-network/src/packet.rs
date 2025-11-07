@@ -395,6 +395,7 @@ mod tests {
 
         let packet = GhostPacket::new(
             resonance,
+            resonance, // sender_resonance
             payload.clone(),
             carrier.clone(),
             CarrierType::Raw,
@@ -412,6 +413,7 @@ mod tests {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let packet = GhostPacket::new(
             resonance,
+            resonance, // sender_resonance
             b"payload".to_vec(),
             b"carrier".to_vec(),
             CarrierType::Raw,
@@ -432,6 +434,7 @@ mod tests {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let mut packet = GhostPacket::new(
             resonance,
+            resonance, // sender_resonance
             b"payload".to_vec(),
             b"carrier".to_vec(),
             CarrierType::Raw,
@@ -455,6 +458,7 @@ mod tests {
         let packet_resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let packet = GhostPacket::new(
             packet_resonance,
+            packet_resonance, // sender_resonance
             b"payload".to_vec(),
             b"carrier".to_vec(),
             CarrierType::Raw,
@@ -498,6 +502,7 @@ mod tests {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let packet = GhostPacket::new(
             resonance,
+            resonance, // sender_resonance
             vec![0u8; 100],
             vec![0u8; 200],
             CarrierType::Raw,

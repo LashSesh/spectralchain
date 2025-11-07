@@ -685,7 +685,7 @@ mod tests {
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
         let identity = NodeIdentity::new(resonance, None);
 
-        let beacon_id = engine.announce(&identity, None).await.unwrap();
+        let _beacon_id = engine.announce(&identity, None).await.unwrap();
         assert_eq!(engine.active_beacon_count(), 1);
 
         let stats = engine.get_stats();

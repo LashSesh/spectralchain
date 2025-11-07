@@ -556,6 +556,7 @@ mod tests {
         // Create and broadcast packet
         let packet = GhostPacket::new(
             resonance,
+            resonance, // sender_resonance
             b"test payload".to_vec(),
             b"test carrier".to_vec(),
             CarrierType::Raw,
@@ -583,8 +584,10 @@ mod tests {
         engine.create_channel(channel_resonance, 0.1, 300).unwrap();
 
         // Broadcast packet with very different resonance
+        let packet_resonance = ResonanceState::new(10.0, 10.0, 10.0);
         let packet = GhostPacket::new(
-            ResonanceState::new(10.0, 10.0, 10.0),
+            packet_resonance,
+            packet_resonance, // sender_resonance
             b"test".to_vec(),
             b"test".to_vec(),
             CarrierType::Raw,
@@ -638,6 +641,7 @@ mod tests {
         for _ in 0..15 {
             let packet = GhostPacket::new(
                 resonance,
+                resonance, // sender_resonance
                 b"test".to_vec(),
                 b"test".to_vec(),
                 CarrierType::Raw,
@@ -660,6 +664,7 @@ mod tests {
         // Broadcast packet
         let packet = GhostPacket::new(
             resonance,
+            resonance, // sender_resonance
             b"test".to_vec(),
             b"test".to_vec(),
             CarrierType::Raw,

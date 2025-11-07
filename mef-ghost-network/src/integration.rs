@@ -23,6 +23,7 @@ use tracing::{debug, info};
 ///
 /// This wrapper is necessary because Rust cannot unsize through Mutex<T> to Mutex<dyn Trait>.
 /// We wrap the Arc<Mutex<Libp2pTransport>> and implement Transport by delegating all methods.
+#[derive(Debug)]
 struct TransportWrapper {
     inner: Arc<Mutex<Libp2pTransport>>,
 }
