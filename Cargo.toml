@@ -20,10 +20,10 @@ license = "MIT"
 repository = "https://github.com/LashSesh/spectralchain"
 
 [workspace.dependencies]
-# Core dependencies (matching Infinity Ledger)
+# Core dependencies (updated for security)
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-ndarray = "0.15"
+ndarray = "0.16"
 nalgebra = "0.33"
 rand = "0.8"
 rand_distr = "0.4"
@@ -53,15 +53,14 @@ ed25519-dalek = "2.1"
 zeroize = { version = "1.7", features = ["derive"] }
 
 # NEW: Networking dependencies
-libp2p = { version = "0.53", features = ["tokio", "tcp", "noise", "yamux", "gossipsub", "kad", "identify", "ping", "macros"] }
+libp2p = { version = "0.54", features = ["tokio", "tcp", "noise", "yamux", "gossipsub", "kad", "identify", "ping", "macros", "quic"] }
 quinn = "0.11"  # QUIC protocol
 async-trait = "0.1"
 hex = "0.4"
 bincode = "1.3"
 serde_bytes = "0.11"
 
-# NEW: Steganography
-steganography = "1.0"
+# NEW: Image processing (for steganography implementation)
 image = "0.25"
 
 # Shared utilities
