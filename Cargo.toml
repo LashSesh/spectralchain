@@ -10,6 +10,9 @@ members = [
     "mef-quantum-routing",
     "mef-ephemeral-services",
     "mef-fork-healing",
+
+    # Quantum-Hybrid Operators Core
+    "quantumhybrid_operatoren_core",
 ]
 
 [workspace.package]
