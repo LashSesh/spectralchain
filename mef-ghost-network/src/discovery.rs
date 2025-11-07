@@ -773,12 +773,13 @@ mod tests {
         let engine = DiscoveryEngine::new(1, 1, 0.2); // 1 second timeout
 
         let resonance = ResonanceState::new(1.0, 1.0, 1.0);
-        let mut beacon = DiscoveryBeacon::new(resonance, 1, None);
+        let beacon = DiscoveryBeacon::new(resonance, 0, None); // 0 second TTL
 
-        // Expire beacon
-        beacon.timestamp -= 10;
-
+        // Receive beacon while it's still valid
         engine.receive_beacon(beacon).unwrap();
+
+        // Wait for beacon to expire (sleep for 100ms to ensure expiration)
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
         // Cleanup should remove expired beacon and inactive node
         let (beacons_removed, nodes_removed) = engine.cleanup().unwrap();

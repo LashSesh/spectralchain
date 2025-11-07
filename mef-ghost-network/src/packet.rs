@@ -506,6 +506,6 @@ mod tests {
 
         let size = packet.size();
         assert!(size > 300); // At least payload + carrier
-        assert!(size < 400); // Plus overhead
+        assert!(size < 420); // Plus overhead (114 bytes fixed overhead)
     }
 }
